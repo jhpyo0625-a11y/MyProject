@@ -4,8 +4,12 @@ T1.3 — Preprocessing pipeline.
 For every image in the manifest:
   1. Load raw BMP
   2. Apply fixed crop  (from config.yaml)
-  3. Resize to target dimensions (448 x 192)
+  3. Resize to target dimensions (from config.yaml; currently 448 x 224)
   4. Save as uint8 numpy array → data/crops/{label}/{stem}.npy
+
+The cache skips images already built, but is invalidated when the crop/resize
+config changes (tracked in data/crops/.crop_params.json) so tuning the crop box
+forces a clean rebuild instead of silently reusing stale crops.
 
 Normalization (ImageNet mean/std) is deferred to the feature extractor so that
 the same crop can be used for augmentation and visualization.
@@ -13,6 +17,7 @@ the same crop can be used for augmentation and visualization.
 
 import sys
 import csv
+import json
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +35,22 @@ crop_c    = cfg["preprocessing"]["crop"]
 CROP      = (crop_c["x_min"], crop_c["y_min"], crop_c["x_max"], crop_c["y_max"])
 OUT_W     = cfg["preprocessing"]["resize"]["width"]
 OUT_H     = cfg["preprocessing"]["resize"]["height"]
+PARAMS_FILE = CROPS_DIR / ".crop_params.json"
+
+
+def _current_params() -> dict:
+    return {"crop": list(CROP), "resize": [OUT_W, OUT_H]}
+
+
+def _cache_is_stale() -> bool:
+    """True if a sidecar exists and was built with different crop/resize params.
+    Absent sidecar -> unknown baseline; adopt current (don't force a rebuild)."""
+    if not PARAMS_FILE.exists():
+        return False
+    try:
+        return json.loads(PARAMS_FILE.read_text(encoding="utf-8")) != _current_params()
+    except Exception:
+        return False
 
 
 def preprocess_image(path: Path) -> np.ndarray:
@@ -47,19 +68,26 @@ def main():
     ok      = 0
     errors  = []
 
+    CROPS_DIR.mkdir(parents=True, exist_ok=True)
     for label in set(r["label"] for r in rows):
         (CROPS_DIR / label).mkdir(parents=True, exist_ok=True)
 
+    force = _cache_is_stale()
+
     print(f"Preprocessing {total} images → {CROPS_DIR}")
     print(f"  Crop:   x=[{CROP[0]},{CROP[2]}]  y=[{CROP[1]},{CROP[3]}]")
-    print(f"  Resize: {OUT_W} x {OUT_H} px\n")
+    print(f"  Resize: {OUT_W} x {OUT_H} px")
+    if force:
+        print("  Crop/resize config CHANGED since the cache was built "
+              "-> regenerating all crops.")
+    print()
 
     for i, row in enumerate(rows, 1):
         src  = Path(row["filepath"])
         stem = src.stem
         dst  = CROPS_DIR / row["label"] / f"{stem}.npy"
 
-        if dst.exists():          # skip if already cached
+        if dst.exists() and not force:    # skip if already cached
             ok += 1
             if i % 100 == 0:
                 print(f"  [{i}/{total}] skipping (cached)")
@@ -90,6 +118,14 @@ def main():
         if p:
             arr = np.load(p)
             print(f"  {label}: {arr.shape}  dtype={arr.dtype}")
+
+    # Record the params this cache was built with (so a later config change
+    # invalidates it). Only when the run is clean, so a partial run isn't
+    # mistaken for a complete cache.
+    if not errors:
+        PARAMS_FILE.write_text(json.dumps(_current_params()), encoding="utf-8")
+
+    sys.exit(1 if errors else 0)
 
 
 if __name__ == "__main__":
