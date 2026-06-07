@@ -22,46 +22,58 @@ from src.data.preprocess import preprocess_image, OUT_W, OUT_H, CROP
 from validate_crop import check_crop_edges   # noqa: E402  (scripts/ on path)
 
 
-def _rows(n_per_class):
+def _rows(coils_per_class=12, imgs_per_coil=2):
+    """Synthetic manifest: each physical coil has multiple images so the test
+    can verify no coil is split across folds."""
     rows = []
     for cls in ("Pass", "Dent", "Loose"):
-        for i in range(n_per_class):
-            rows.append({"filepath": f"data/raw/{cls}/{cls}_{i}.bmp", "label": cls})
+        for c in range(coils_per_class):
+            for k in range(imgs_per_coil):
+                rows.append({"filepath": f"data/raw/{cls}/{cls}_{c}_{k}.bmp",
+                             "label": cls,
+                             "session_id": f"{cls}_sess",
+                             "position": f"{cls}_{c}"})    # coil = (session, position)
     return rows
 
 
-def test_assign_folds_fresh():
-    rows, (mode, n) = assign_folds(_rows(10))
-    assert mode == "stratified"
+def _coil(r):
+    return (r["session_id"], r["position"])
+
+
+def test_assign_folds_fresh_grouped():
+    rows, (mode, n) = assign_folds(_rows())
+    assert mode == "grouped"
     folds = {int(r["fold"]) for r in rows}
-    assert folds == set(range(N_FOLDS))            # all folds populated, incl. comp fold
-    assert COMP_FOLD in folds
-    # every class is spread across more than one fold (stratified, not clumped)
+    assert folds == set(range(N_FOLDS)) and COMP_FOLD in folds
+    # THE leakage guarantee: no physical coil spans more than one fold
+    coil_folds = {}
+    for r in rows:
+        coil_folds.setdefault(_coil(r), set()).add(r["fold"])
+    assert all(len(fs) == 1 for fs in coil_folds.values()), "a coil spans folds!"
     for cls in ("Pass", "Dent", "Loose"):
-        cf = {r["fold"] for r in rows if r["label"] == cls}
-        assert len(cf) > 1, (cls, cf)
-    print(f"  ok: fresh split populates folds 0..{N_FOLDS-1}, classes spread")
+        assert len({r["fold"] for r in rows if r["label"] == cls}) > 1
+    print(f"  ok: grouped split populates folds 0..{N_FOLDS-1}, NO coil spans folds")
 
 
-def test_assign_folds_incremental_preserves_and_never_comp():
-    rows, _ = assign_folds(_rows(10))
+def test_assign_folds_incremental_coil_stable():
+    rows, _ = assign_folds(_rows())
     before = {r["filepath"]: r["fold"] for r in rows}
-    # append two new, unfolded rows
-    new = [{"filepath": "data/raw/Dent/late_1.bmp", "label": "Dent"},
-           {"filepath": "data/raw/Loose/late_2.bmp", "label": "Loose"}]
+    # two images of ONE new coil
+    new = [{"filepath": "data/raw/Dent/late_0.bmp", "label": "Dent",
+            "session_id": "late_sess", "position": "late_0"},
+           {"filepath": "data/raw/Dent/late_1.bmp", "label": "Dent",
+            "session_id": "late_sess", "position": "late_0"}]
     rows2, (mode, n) = assign_folds(rows + new)
     assert mode == "incremental" and n == 2
-    # existing assignments untouched
-    for r in rows2:
+    for r in rows2:                                   # existing untouched
         if r["filepath"] in before:
             assert r["fold"] == before[r["filepath"]]
-    # new rows never land in the held-out comparison fold
-    for r in new:
-        assert 0 <= int(r["fold"]) < COMP_FOLD, r
-    # idempotent: re-running assigns nothing new
+    new_folds = {r["fold"] for r in new}
+    assert len(new_folds) == 1                        # both images -> same fold (coil-stable)
+    assert 0 <= int(new[0]["fold"]) < COMP_FOLD       # new coil never in comp fold
     _, (mode3, n3) = assign_folds(rows2)
-    assert mode3 == "incremental" and n3 == 0
-    print("  ok: incremental preserves existing folds, never comp fold, idempotent")
+    assert mode3 == "incremental" and n3 == 0         # idempotent
+    print("  ok: incremental keeps a coil's images together, never comp fold, idempotent")
 
 
 def test_preprocess_image_contract():
@@ -84,8 +96,8 @@ def test_check_crop_edges():
 
 if __name__ == "__main__":
     print("Data-pipeline unit tests...")
-    test_assign_folds_fresh()
-    test_assign_folds_incremental_preserves_and_never_comp()
+    test_assign_folds_fresh_grouped()
+    test_assign_folds_incremental_coil_stable()
     test_preprocess_image_contract()
     test_check_crop_edges()
     print("ALL PASS")

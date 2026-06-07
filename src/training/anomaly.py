@@ -396,7 +396,8 @@ Thresholds derived from OOF (folds 0-3); defects only used to place bands.
 - **Defects auto-passed (critical, must stay ~0): {f4_split['autopass_defect_miss']:.1%}**
 - Defects auto-flagged: {f4_split['flag_defect_recall']:.0%}
 
-NOT a >=95% auto-recall gate. Honest CV Fail-recall @20% FR ~= 55%.
+NOT a >=95% auto-recall gate. Honest CV Fail-recall @20% FR = {oof_rec20:.0%}
+(coil-grouped folds -- no same-coil leakage between train and validation).
 """
     (out_dir / "padim_card.md").write_text(card, encoding="utf-8")
     return metrics
