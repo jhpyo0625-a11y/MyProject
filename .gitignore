@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Data (large binary files - track manifests/index CSVs, not images or embeddings)
+data/crops/
+data/embeddings/
+data/labels.db
+data/prediction_log.csv
+Coil-image-Dataset/
+
+# Generated previews (scratch files)
+preview_*.png
+raw_preview_*.png
+
+# Archived models (track production snapshot only)
+models/archive/
+
+# MLflow run data
+experiments/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
