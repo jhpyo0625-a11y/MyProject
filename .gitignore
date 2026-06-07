@@ -19,6 +19,9 @@ raw_preview_*.png
 # Archived models (track production snapshot only)
 models/archive/
 
+# PaDiM detector artifact (61MB, regenerable via `python -m src.training.anomaly`)
+models/production/padim.pkl
+
 # MLflow run data
 experiments/
 mlruns/
@@ -27,6 +30,9 @@ mlruns/
 reports/aug_check.png
 reports/crop_compare.png
 reports/one_sample.png
+reports/fullframe_miss_*.png
+reports/newcrop_check.png
+reports/diagnose_fold4_missed.png
 
 # Sample / masked images dropped in project root (not dataset)
 /Pass.bmp

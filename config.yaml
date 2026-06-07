@@ -5,7 +5,7 @@ augmentation:
   max_translate_px: 50
   minority_copies: 5
 decision:
-  pass_threshold: 0.429008
+  pass_threshold: 0.554156
   review_band_delta: 0.05
 evaluation:
   target_fail_recall: 0.95
@@ -29,8 +29,8 @@ preprocessing:
   crop:
     x_max: 2000
     x_min: 300
-    y_max: 1320
-    y_min: 620
+    y_max: 1480
+    y_min: 610
   normalize:
     mean:
     - 0.485
@@ -41,7 +41,7 @@ preprocessing:
     - 0.224
     - 0.225
   resize:
-    height: 192
+    height: 224
     width: 448
 retraining:
   trigger_count: 50

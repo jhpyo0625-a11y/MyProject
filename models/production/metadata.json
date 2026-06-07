@@ -2,7 +2,7 @@
   "approach": "finetune_end_to_end",
   "backbone": "efficientnet_b0",
   "n_unfreeze_blocks": 3,
-  "input_size": "224x96",
+  "input_size": "448x224",
   "classes": [
     "Pass",
     "Dent",
@@ -13,13 +13,15 @@
     "Dent": 1,
     "Loose": 2
   },
-  "pass_threshold": 0.429008,
+  "pass_threshold": 0.554156,
   "review_band_delta": 0.05,
-  "cv_fail_recall": 0.912,
-  "thr_fail_recall": 0.9524,
-  "thr_false_reject": 0.9329,
-  "fold4_fail_recall": 0.6486,
-  "fold4_false_reject": 0.3175,
+  "fr_budget": 0.2,
+  "cv_macro_f1": 0.5163,
+  "cv_recall_at_budget": 0.5374,
+  "cv_fr_at_budget": 0.1992,
+  "fold4_macro_f1": 0.632,
+  "fold4_fail_recall": 0.7297,
+  "fold4_false_reject": 0.119,
   "n_train": 654,
-  "mlflow_run_id": "383c5d955939482ab0a7143a101fde5b"
+  "mlflow_run_id": "bad0f877f53a4a139716dc348eafa4e7"
 }
