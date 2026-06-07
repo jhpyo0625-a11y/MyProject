@@ -24,6 +24,17 @@ from src.inference.predictor import Predictor
 
 
 def fmt_result(path: Path, r: dict, verbose: bool) -> str:
+    if r.get("backend") == "padim":
+        line = (f"{path.name:<55} "
+                f"{r['band']:<10} "
+                f"score={r['anomaly_score']:.1f}  "
+                f"{r['latency_ms']:.0f}ms")
+        if verbose:
+            t = r["thresholds"]
+            line += (f"\n  norm={r['score_norm']:.3f}  "
+                     f"t_low={t['t_low']:.1f}  t_flag={t['t_flag']:.1f}  "
+                     f"-> {r['decision']}")
+        return line
     line = (f"{path.name:<55} "
             f"{r['decision']:<8} "
             f"p_fail={r['p_fail']:.3f}  "
@@ -75,23 +86,39 @@ def main():
 
     if args.output:
         out = Path(args.output)
-        fieldnames = ["filepath", "label", "pass_fail", "decision",
-                      "p_Pass", "p_Dent", "p_Loose", "p_fail", "latency_ms"]
+        is_padim = results and results[0].get("backend") == "padim"
+        if is_padim:
+            fieldnames = ["filepath", "band", "decision", "pass_fail",
+                          "anomaly_score", "score_norm", "latency_ms"]
+        else:
+            fieldnames = ["filepath", "label", "pass_fail", "decision",
+                          "p_Pass", "p_Dent", "p_Loose", "p_fail", "latency_ms"]
         with open(out, "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=fieldnames)
             w.writeheader()
             for bmp, r in zip(bmps, results):
-                w.writerow({
-                    "filepath":   str(bmp),
-                    "label":      r["label"],
-                    "pass_fail":  r["pass_fail"],
-                    "decision":   r["decision"],
-                    "p_Pass":     r["probabilities"]["Pass"],
-                    "p_Dent":     r["probabilities"]["Dent"],
-                    "p_Loose":    r["probabilities"]["Loose"],
-                    "p_fail":     r["p_fail"],
-                    "latency_ms": r["latency_ms"],
-                })
+                if is_padim:
+                    w.writerow({
+                        "filepath":      str(bmp),
+                        "band":          r["band"],
+                        "decision":      r["decision"],
+                        "pass_fail":     r["pass_fail"],
+                        "anomaly_score": r["anomaly_score"],
+                        "score_norm":    r["score_norm"],
+                        "latency_ms":    r["latency_ms"],
+                    })
+                else:
+                    w.writerow({
+                        "filepath":   str(bmp),
+                        "label":      r["label"],
+                        "pass_fail":  r["pass_fail"],
+                        "decision":   r["decision"],
+                        "p_Pass":     r["probabilities"]["Pass"],
+                        "p_Dent":     r["probabilities"]["Dent"],
+                        "p_Loose":    r["probabilities"]["Loose"],
+                        "p_fail":     r["p_fail"],
+                        "latency_ms": r["latency_ms"],
+                    })
         print(f"Results saved to {out}")
 
 

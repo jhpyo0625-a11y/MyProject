@@ -1,21 +1,30 @@
 """
 T4.1 -- Inference wrapper. Single entry point for all coil defect prediction.
 
-Handles two model backends (auto-detected from models/production/):
-  - Fine-tuned PyTorch model  (model.pt)      -- preferred
-  - Frozen backbone + sklearn (classifier.pkl) -- fallback
+Handles three model backends (auto-detected from models/production/):
+  - PaDiM anomaly detector    (padim.pkl)     -- preferred (human-assist deploy)
+  - Fine-tuned PyTorch model  (model.pt)      -- supervised 3-class
+  - Frozen backbone + sklearn (classifier.pkl) -- legacy fallback
+
+The PaDiM backend is the deployed one: supervised and anomaly approaches both
+capped at ~55% Fail-recall @20% false-reject, so the system runs as a
+human-assist triage (3-band: AUTO-PASS / REVIEW / AUTO-FLAG), never a silent
+>=95% auto-pass gate. See models/production/padim_card.md.
 
 Usage:
     predictor = Predictor()
     result = predictor.predict("path/to/image.bmp")
+    # PaDiM backend:
     # {
-    #   "label":         "Dent",
-    #   "pass_fail":     "Fail",      # binary gate (Review -> Fail: never auto-pass)
-    #   "decision":      "Fail",      # Pass | Fail | Review
-    #   "probabilities": {"Pass": 0.08, "Dent": 0.76, "Loose": 0.16},
-    #   "p_fail":        0.92,
-    #   "latency_ms":    87.3,
+    #   "backend":       "padim",
+    #   "decision":      "Review",        # Pass | Review | Fail
+    #   "band":          "REVIEW",        # AUTO-PASS | REVIEW | AUTO-FLAG
+    #   "pass_fail":     "Fail",          # Pass only if AUTO-PASS (never auto-pass when unsure)
+    #   "anomaly_score": 31.7,            # max patch Mahalanobis
+    #   "score_norm":    0.43,            # 0..1 (score / t_flag), for display
+    #   "latency_ms":    47.3,
     # }
+    # Supervised backend additionally returns label / probabilities / p_fail.
 """
 
 import json
@@ -29,6 +38,7 @@ import numpy as np
 import timm
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 from PIL import Image
@@ -84,7 +94,11 @@ class Predictor:
         self.threshold = float(cfg["decision"]["pass_threshold"])
         self.delta     = float(cfg["decision"]["review_band_delta"])
 
-        if (prod_dir / "model.pt").exists():
+        if (prod_dir / "padim.pkl").exists():
+            self._load_padim(prod_dir)
+            self._type = "padim"
+            print(f"Predictor: PaDiM anomaly detector ({prod_dir / 'padim.pkl'})")
+        elif (prod_dir / "model.pt").exists():
             self._load_pytorch(prod_dir)
             self._type = "pytorch"
             print(f"Predictor: fine-tuned PyTorch model ({prod_dir / 'model.pt'})")
@@ -95,12 +109,30 @@ class Predictor:
         else:
             raise FileNotFoundError(
                 f"No model found in {prod_dir}. "
-                "Run src/training/finetune.py or src/training/train.py first."
+                "Run src/training/anomaly.py (PaDiM) or src/training/finetune.py first."
             )
 
     # ------------------------------------------------------------------
     # Loaders
     # ------------------------------------------------------------------
+
+    def _load_padim(self, prod_dir: Path) -> None:
+        with open(prod_dir / "padim.pkl", "rb") as f:
+            a = pickle.load(f)
+        self._pd_model = timm.create_model(
+            a["backbone"], pretrained=True, features_only=True,
+            out_indices=tuple(a["out_indices"]),
+        )
+        self._pd_model.eval()
+        self._pd_mean    = a["mean"]                       # (L, R)
+        self._pd_inv     = a["inv"]                         # (L, R, R)
+        self._pd_chan    = np.asarray(a["chan_idx"])
+        self._input_w    = a["input_w"]
+        self._input_h    = a["input_h"]
+        self._pd_t_low   = float(a["t_low"])
+        self._pd_t_flag  = float(a["t_flag"])
+        self._pd_norm_mean = torch.tensor(a["imagenet_mean"]).view(1, 3, 1, 1)
+        self._pd_norm_std  = torch.tensor(a["imagenet_std"]).view(1, 3, 1, 1)
 
     def _load_pytorch(self, prod_dir: Path) -> None:
         ckpt = torch.load(prod_dir / "model.pt", map_location="cpu",
@@ -165,6 +197,25 @@ class Predictor:
         return torch.softmax(logits, dim=-1).numpy()[0]  # (3,)
 
     @torch.no_grad()
+    def _score_padim(self, crop_arr: np.ndarray) -> float:
+        """uint8 crop -> image anomaly score (max patch Mahalanobis distance)."""
+        t = (torch.from_numpy(crop_arr.copy()).float().div(255.0)
+             .permute(2, 0, 1)[None])
+        t = F.interpolate(t, size=(self._input_h, self._input_w),
+                          mode="bilinear", align_corners=False)
+        t = (t - self._pd_norm_mean) / self._pd_norm_std
+        maps = self._pd_model(t)
+        ref_hw = maps[-1].shape[-2:]
+        aligned = [F.interpolate(m, size=ref_hw, mode="bilinear",
+                                 align_corners=False) for m in maps]
+        feat = torch.cat(aligned, dim=1)[:, self._pd_chan]   # (1, R, h, w)
+        C = feat.shape[1]
+        X = feat.squeeze(0).reshape(C, -1).T.numpy()         # (L, R)
+        d = X - self._pd_mean                                # (L, R)
+        m = np.einsum("lr,lrs,ls->l", d, self._pd_inv, d)    # (L,)
+        return float(np.sqrt(np.maximum(m, 0.0)).max())
+
+    @torch.no_grad()
     def _probs_sklearn(self, crop_arr: np.ndarray) -> np.ndarray:
         # Resize to backbone's expected input, normalize
         img_resized = Image.fromarray(crop_arr).resize(
@@ -204,6 +255,9 @@ class Predictor:
         img  = Image.open(image_path).convert("RGB")
         crop = np.asarray(img.crop(self.crop), dtype=np.uint8)
 
+        if self._type == "padim":
+            return self._predict_padim(crop, t0)
+
         probs = (self._probs_pytorch(crop) if self._type == "pytorch"
                  else self._probs_sklearn(crop))
 
@@ -227,6 +281,29 @@ class Predictor:
             "probabilities": {n: round(float(p), 4)
                               for n, p in zip(LABEL_NAMES, probs)},
             "p_fail":        round(p_fail, 4),
+            "latency_ms":    round((time.perf_counter() - t0) * 1000, 1),
+        }
+
+    def _predict_padim(self, crop: np.ndarray, t0: float) -> dict:
+        """Human-assist 3-band decision from the PaDiM anomaly score."""
+        score = self._score_padim(crop)
+        if score >= self._pd_t_flag:
+            band, decision = "AUTO-FLAG", "Fail"
+        elif score < self._pd_t_low:
+            band, decision = "AUTO-PASS", "Pass"
+        else:
+            band, decision = "REVIEW", "Review"
+
+        return {
+            "backend":       "padim",
+            "decision":      decision,
+            "band":          band,
+            # Conservative gate: only an AUTO-PASS band clears; review/flag -> Fail
+            "pass_fail":     "Pass" if band == "AUTO-PASS" else "Fail",
+            "anomaly_score": round(score, 3),
+            "score_norm":    round(min(score / self._pd_t_flag, 1.0), 4),
+            "thresholds":    {"t_low": round(self._pd_t_low, 3),
+                              "t_flag": round(self._pd_t_flag, 3)},
             "latency_ms":    round((time.perf_counter() - t0) * 1000, 1),
         }
 
