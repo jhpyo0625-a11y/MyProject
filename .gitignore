@@ -10,6 +10,7 @@ data/crops/
 data/embeddings/**/*.npy
 data/labels.db
 data/prediction_log.csv
+data/raw/
 Coil-image-Dataset/
 
 # Generated previews (scratch files)
