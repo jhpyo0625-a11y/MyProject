@@ -36,6 +36,7 @@ Run:
 """
 
 import csv
+import json
 import pickle
 import sys
 import time
@@ -253,11 +254,17 @@ def _band_split(scores, ybin, t_low, t_flag):
     }
 
 
-def fit_and_save_production(X, y, folds, chan_idx, oof_scores, oof_ybin):
+def fit_and_save_production(X, y, folds, chan_idx, oof_scores, oof_ybin,
+                            out_dir=PROD_DIR):
     """Fit PaDiM on Pass(folds 0-3), derive the 3-band policy from OOF scores,
-    characterize the workload on OOF + held-out fold 4, and save the artifact."""
+    characterize the workload on OOF + held-out fold 4, save the artifact +
+    metrics.json into out_dir, and return a metrics dict.
+
+    out_dir defaults to models/production/ (direct deploy); the retraining
+    pipeline passes models/candidate/ so a human can review before promoting."""
+    out_dir = Path(out_dir)
     print("\n" + "=" * 62)
-    print("PRODUCTION: deployable PaDiM + human-assist decision policy")
+    print(f"FIT PaDiM + human-assist decision policy -> {out_dir.name}/")
     print("=" * 62)
 
     # Thresholds derived purely from OOF (defects only used to place bands)
@@ -295,7 +302,7 @@ def fit_and_save_production(X, y, folds, chan_idx, oof_scores, oof_ybin):
           f"<-- must stay near 0")
     print(f"    defects auto-flagged           : {f4_split['flag_defect_recall']:.1%}")
 
-    PROD_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     artifact = {
         "kind":        "padim",
         "backbone":    BACKBONE,
@@ -308,10 +315,28 @@ def fit_and_save_production(X, y, folds, chan_idx, oof_scores, oof_ybin):
         "t_low":       t_low, "t_flag": t_flag,
         "cov_eps":     COV_EPS,
     }
-    path = PROD_DIR / "padim.pkl"
+    path = out_dir / "padim.pkl"
     with open(path, "wb") as f:
         pickle.dump(artifact, f)
     print(f"\n  Saved -> {path}  ({path.stat().st_size/1e6:.0f} MB)")
+
+    n_pass_train = int(((folds != COMP_FOLD) & (y == 0)).sum())
+    oof_rec20, _, oof_fr20 = recall_at_fr(oof_scores, oof_ybin, 0.20)
+    metrics = {
+        "kind":            "padim",
+        "t_low":           round(t_low, 4),
+        "t_flag":          round(t_flag, 4),
+        "n_pass_train":    n_pass_train,
+        "n_fold4":         int((folds == COMP_FOLD).sum()),
+        "cv_recall_at_20fr": round(float(oof_rec20), 4),
+        "fold4_auto_pass":      round(f4_split["auto_pass"], 4),
+        "fold4_review":         round(f4_split["review"], 4),
+        "fold4_auto_flag":      round(f4_split["flag"], 4),
+        "fold4_autopass_defect_miss": round(f4_split["autopass_defect_miss"], 4),
+        "fold4_flag_defect_recall":   round(f4_split["flag_defect_recall"], 4),
+    }
+    with open(out_dir / "metrics.json", "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2)
 
     card = f"""# Model Card -- Coil Defect Inspection (PaDiM, human-assist)
 
@@ -343,11 +368,74 @@ Thresholds derived from OOF (folds 0-3); defects only used to place bands.
 
 NOT a >=95% auto-recall gate. Honest CV Fail-recall @20% FR ~= 55%.
 """
-    (PROD_DIR / "padim_card.md").write_text(card, encoding="utf-8")
-    return t_low, t_flag
+    (out_dir / "padim_card.md").write_text(card, encoding="utf-8")
+    return metrics
 
 
 # ---------------------------------------------------------------------------
+# Reusable pipeline pieces (shared by main() and the Phase 7 retrain pipeline)
+# ---------------------------------------------------------------------------
+
+def _channel_idx():
+    """Deterministic random channel subset over the concatenated feature maps.
+    Seeded -> production and candidate models share the same channels, so their
+    fold-4 scores are directly comparable."""
+    rng = np.random.RandomState(SEED)
+    total_ch = sum(timm.create_model(BACKBONE, features_only=True,
+                                     out_indices=OUT_INDICES).feature_info.channels())
+    return np.sort(rng.choice(total_ch, size=R_CHANNELS, replace=False))
+
+
+def load_features(verbose=True):
+    """Read the manifest, extract frozen patch features for every existing crop.
+    Returns (X, y, folds, chan_idx)."""
+    with open(MANIFEST, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    entries = []
+    for r in rows:
+        p = CROPS_DIR / r["label"] / f"{Path(r['filepath']).stem}.npy"
+        if p.exists():
+            entries.append((p, LABEL_MAP[r["label"]], int(r["fold"])))
+
+    if verbose:
+        cnt = {c: sum(1 for _, l, _ in entries if l == LABEL_MAP[c])
+               for c in LABEL_NAMES}
+        print(f"\nCrops: {len(entries)}  " +
+              "  ".join(f"{c}={n}" for c, n in cnt.items()))
+        n_pass_cv = sum(1 for _, l, f in entries if l == 0 and f != COMP_FOLD)
+        print(f"Pass coils available to model 'normal' (folds 0-3): {n_pass_cv}")
+
+    chan_idx = _channel_idx()
+    model = build_feature_model()
+    if verbose:
+        print("\nExtracting patch features (frozen, one pass)...")
+    X, y, folds = extract_all(entries, model, chan_idx)
+    if verbose:
+        print(f"  feature tensor: {X.shape}  ({X.nbytes/1e6:.0f} MB)")
+    return X, y, folds, chan_idx
+
+
+def padim_oof(X, y, folds):
+    """OOF PaDiM scores over folds 0..COMP_FOLD-1 (fit on Pass of train folds)."""
+    oof_scores, oof_ybin = [], []
+    for val_fold in range(COMP_FOLD):
+        train_mask = (folds != val_fold) & (folds != COMP_FOLD) & (y == 0)
+        val_mask   = folds == val_fold
+        det = PaDiM().fit(X[train_mask])
+        oof_scores.append(det.score(X[val_mask]))
+        oof_ybin.append((y[val_mask] != 0).astype(int))
+    return np.concatenate(oof_scores), np.concatenate(oof_ybin)
+
+
+def run_padim(out_dir=PROD_DIR, verbose=True):
+    """End-to-end PaDiM fit: load features -> OOF thresholds -> fit + save into
+    out_dir. Returns the metrics dict. This is the entry point the retraining
+    pipeline calls (with out_dir=models/candidate/)."""
+    X, y, folds, chan_idx = load_features(verbose=verbose)
+    oof_scores, oof_ybin = padim_oof(X, y, folds)
+    return fit_and_save_production(X, y, folds, chan_idx,
+                                   oof_scores, oof_ybin, out_dir=out_dir)
+
 
 def main():
     print("=" * 62)
@@ -357,30 +445,7 @@ def main():
     print(f"  Input: {INPUT_W}x{INPUT_H}")
     print("=" * 62)
 
-    with open(MANIFEST, encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    entries = []
-    for r in rows:
-        p = CROPS_DIR / r["label"] / f"{Path(r['filepath']).stem}.npy"
-        if p.exists():
-            entries.append((p, LABEL_MAP[r["label"]], int(r["fold"])))
-
-    cnt = {c: sum(1 for _, l, _ in entries if l == LABEL_MAP[c]) for c in LABEL_NAMES}
-    print(f"\nCrops: {len(entries)}  " +
-          "  ".join(f"{c}={n}" for c, n in cnt.items()))
-    n_pass_cv = sum(1 for _, l, f in entries if l == 0 and f != COMP_FOLD)
-    print(f"Pass coils available to model 'normal' (folds 0-3): {n_pass_cv}")
-
-    # Random channel subset (seeded) over the 384 concatenated channels
-    rng = np.random.RandomState(SEED)
-    total_ch = sum(timm.create_model(BACKBONE, features_only=True,
-                                     out_indices=OUT_INDICES).feature_info.channels())
-    chan_idx = np.sort(rng.choice(total_ch, size=R_CHANNELS, replace=False))
-
-    model = build_feature_model()
-    print("\nExtracting patch features (frozen, one pass)...")
-    X, y, folds = extract_all(entries, model, chan_idx)
-    print(f"  feature tensor: {X.shape}  ({X.nbytes/1e6:.0f} MB)")
+    X, y, folds, chan_idx = load_features()
 
     results = [
         evaluate("PaDiM (per-patch, MAX) -- localized-defect aware",
