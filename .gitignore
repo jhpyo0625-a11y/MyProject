@@ -7,7 +7,7 @@ __pycache__/
 
 # Data (large binary files - track manifests/index CSVs, not images or embeddings)
 data/crops/
-data/embeddings/
+data/embeddings/**/*.npy
 data/labels.db
 data/prediction_log.csv
 Coil-image-Dataset/
@@ -21,6 +21,21 @@ models/archive/
 
 # MLflow run data
 experiments/
+mlruns/
+
+# Scratch exploration plots (regenerable)
+reports/aug_check.png
+reports/crop_compare.png
+reports/one_sample.png
+
+# Sample / masked images dropped in project root (not dataset)
+/Pass.bmp
+/Dent.bmp
+/Loose.bmp
+/real-*.bmp
+
+# Claude local settings
+.claude/
 
 # IDE / OS
 .idea/

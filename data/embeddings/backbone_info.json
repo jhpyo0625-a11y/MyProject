@@ -1,0 +1,4 @@
+{
+  "backbone": "resnet18",
+  "embedding_dim": 512
+}
