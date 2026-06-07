@@ -41,7 +41,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -135,8 +135,11 @@ class Predictor:
         self._pd_norm_std  = torch.tensor(a["imagenet_std"]).view(1, 3, 1, 1)
 
     def _load_pytorch(self, prod_dir: Path) -> None:
+        # weights_only=True: the checkpoint holds only tensors + plain
+        # str/int/float/dict, so the safe loader suffices and won't execute a
+        # pickle payload from a tampered model file.
         ckpt = torch.load(prod_dir / "model.pt", map_location="cpu",
-                          weights_only=False)
+                          weights_only=True)
         backbone = timm.create_model(
             ckpt["backbone"], pretrained=False,
             num_classes=0, global_pool="avg",
@@ -229,8 +232,49 @@ class Predictor:
         return self._clf.predict_proba(emb)[0]               # (3,)
 
     # ------------------------------------------------------------------
+    # Decision logic (pure functions -- unit-testable without a model)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decide_supervised(p_fail: float, threshold: float, delta: float):
+        """Map P(Fail) to a (decision, pass_fail) pair. Review never auto-passes."""
+        if p_fail >= threshold + delta:
+            decision = "Fail"
+        elif p_fail <= threshold - delta:
+            decision = "Pass"
+        else:
+            decision = "Review"
+        pass_fail = "Pass" if decision == "Pass" else "Fail"
+        return decision, pass_fail
+
+    @staticmethod
+    def _decide_padim(score: float, t_low: float, t_flag: float):
+        """Map an anomaly score to a (band, decision) pair (3-band human-assist)."""
+        if score >= t_flag:
+            return "AUTO-FLAG", "Fail"
+        if score < t_low:
+            return "AUTO-PASS", "Pass"
+        return "REVIEW", "Review"
+
+    # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def _load_crop(self, image_path: Union[str, Path]) -> np.ndarray:
+        """Read a raw frame and apply the fixed crop, validating the input size."""
+        try:
+            img = Image.open(image_path).convert("RGB")
+        except (FileNotFoundError, UnidentifiedImageError, OSError) as e:
+            raise ValueError(f"Cannot read image {image_path}: {e}") from e
+
+        x_max, y_max = self.crop[2], self.crop[3]
+        if img.width < x_max or img.height < y_max:
+            raise ValueError(
+                f"Image {Path(image_path).name} is {img.width}x{img.height}, "
+                f"smaller than the crop box (needs >= {x_max}x{y_max}). Pass the "
+                "full raw frame, not a pre-cropped image -- cropping out of "
+                "bounds would silently produce a black-padded, wrong prediction.")
+        return np.asarray(img.crop(self.crop), dtype=np.uint8)
 
     def predict(self, image_path: Union[str, Path]) -> dict:
         """
@@ -252,8 +296,7 @@ class Predictor:
         """
         t0 = time.perf_counter()
 
-        img  = Image.open(image_path).convert("RGB")
-        crop = np.asarray(img.crop(self.crop), dtype=np.uint8)
+        crop = self._load_crop(image_path)
 
         if self._type == "padim":
             return self._predict_padim(crop, t0)
@@ -264,15 +307,8 @@ class Predictor:
         label  = LABEL_NAMES[int(probs.argmax())]
         p_fail = float(1.0 - probs[0])   # P(Fail) = 1 - P(Pass)
 
-        if p_fail >= self.threshold + self.delta:
-            decision = "Fail"
-        elif p_fail <= self.threshold - self.delta:
-            decision = "Pass"
-        else:
-            decision = "Review"
-
-        # Conservative binary gate: when uncertain, never auto-pass
-        pass_fail = "Pass" if decision == "Pass" else "Fail"
+        decision, pass_fail = self._decide_supervised(
+            p_fail, self.threshold, self.delta)
 
         return {
             "label":         label,
@@ -287,12 +323,8 @@ class Predictor:
     def _predict_padim(self, crop: np.ndarray, t0: float) -> dict:
         """Human-assist 3-band decision from the PaDiM anomaly score."""
         score = self._score_padim(crop)
-        if score >= self._pd_t_flag:
-            band, decision = "AUTO-FLAG", "Fail"
-        elif score < self._pd_t_low:
-            band, decision = "AUTO-PASS", "Pass"
-        else:
-            band, decision = "REVIEW", "Review"
+        band, decision = self._decide_padim(
+            score, self._pd_t_low, self._pd_t_flag)
 
         return {
             "backend":       "padim",

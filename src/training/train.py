@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.data.config_loader import load_config
-from src.training.dataset import LABEL_INV, LABEL_MAP, LABEL_NAMES, load_embeddings
+from src.training.dataset import LABEL_MAP, LABEL_NAMES, load_embeddings
 
 cfg      = load_config()
 REPORTS  = ROOT / "reports"
@@ -58,6 +58,23 @@ DELTA         = cfg["decision"]["review_band_delta"]
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# predictor.py loads production artifacts in this precedence order; a
+# higher-precedence file silently shadows a freshly-written lower one.
+_ARTIFACT_PRECEDENCE = ["padim.pkl", "model.pt", "classifier.pkl"]
+
+
+def warn_if_shadowed(prod_dir: Path, written: str) -> None:
+    """Warn if a higher-precedence artifact will be loaded instead of `written`."""
+    if written not in _ARTIFACT_PRECEDENCE:
+        return
+    rank = _ARTIFACT_PRECEDENCE.index(written)
+    shadowers = [name for name in _ARTIFACT_PRECEDENCE[:rank]
+                 if (prod_dir / name).exists()]
+    if shadowers:
+        print(f"  WARNING: wrote {written}, but {', '.join(shadowers)} has higher "
+              f"precedence and will load instead. Remove it to deploy {written}.")
+
 
 def make_clf():
     return LogisticRegression(
@@ -302,6 +319,7 @@ def main():
         print("Saving artifacts...")
         with open(PROD_DIR / "classifier.pkl", "wb") as f:
             pickle.dump(clf_final, f)
+        warn_if_shadowed(PROD_DIR, "classifier.pkl")
 
         metadata = {
             "backbone":           cfg["model"]["backbone"],

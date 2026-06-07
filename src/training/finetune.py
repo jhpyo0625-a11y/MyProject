@@ -62,7 +62,7 @@ from src.data.config_loader import load_config
 from src.training.dataset import LABEL_MAP, LABEL_NAMES
 from src.training.train import (
     COMP_FOLD, DELTA, TARGET_RECALL,
-    binary_metrics, plot_cm, plot_pr, tune_threshold, p_fail_from_proba,
+    binary_metrics, plot_cm, plot_pr, warn_if_shadowed,
 )
 
 import random
@@ -303,7 +303,7 @@ def fr_table(p_fail, y_bin, budgets=(0.05, 0.10, 0.15, 0.20, 0.30)):
 
 def train_fold(val_fold, entries_with_fold, class_weights_t):
     """
-    Train one fold. Returns (best_state_dict, oof_probs, oof_true).
+    Train one fold. Returns (model, oof_probs, oof_true, best_epoch).
     entries_with_fold: list of (path, label_int, fold_int)
     """
     set_seed(SEED + val_fold)   # deterministic per fold
@@ -330,6 +330,7 @@ def train_fold(val_fold, entries_with_fold, class_weights_t):
 
     best_score   = -1.0   # epoch selection by macro-F1 (not raw recall)
     best_state   = None
+    best_epoch   = 1
     patience_cnt = 0
 
     for epoch in range(1, MAX_EPOCHS + 1):
@@ -342,6 +343,7 @@ def train_fold(val_fold, entries_with_fold, class_weights_t):
         if score > best_score:
             best_score   = score
             best_state   = {k: v.clone() for k, v in model.state_dict().items()}
+            best_epoch   = epoch
             patience_cnt = 0
         else:
             patience_cnt += 1
@@ -356,7 +358,7 @@ def train_fold(val_fold, entries_with_fold, class_weights_t):
 
     model.load_state_dict(best_state)
     probs, true = eval_loader(model, vl_loader)
-    return model, probs, true
+    return model, probs, true, best_epoch
 
 
 # ---------------------------------------------------------------------------
@@ -417,20 +419,22 @@ def main():
 
         # 4-fold CV
         print(f"\n4-fold CV (folds 0-{COMP_FOLD-1})...")
-        oof_probs_l, oof_true_l = [], []
+        oof_probs_l, oof_true_l, best_epochs = [], [], []
 
         for val_fold in range(COMP_FOLD):
             print(f"\n  --- Fold {val_fold} ---")
             t0 = time.perf_counter()
-            model, oof_probs, oof_true = train_fold(val_fold, entries, cw_tensor)
+            model, oof_probs, oof_true, best_epoch = train_fold(val_fold, entries, cw_tensor)
             elapsed = time.perf_counter() - t0
 
             f1   = macro_f1(oof_probs, oof_true)
             rec  = fail_recall_at_half(oof_probs, oof_true)
-            print(f"  Fold {val_fold}  macroF1={f1:.3f}  failRecall@0.5={rec:.3f}  ({elapsed:.0f}s)")
+            print(f"  Fold {val_fold}  macroF1={f1:.3f}  failRecall@0.5={rec:.3f}  "
+                  f"best_epoch={best_epoch}  ({elapsed:.0f}s)")
 
             oof_probs_l.append(oof_probs)
             oof_true_l.append(oof_true)
+            best_epochs.append(best_epoch)
 
         oof_probs_all = np.concatenate(oof_probs_l)
         oof_true_all  = np.concatenate(oof_true_l)
@@ -481,8 +485,14 @@ def main():
         plot_pr(oof_y_bin, p_fail_oof, threshold,
                 REPORTS / "precision_recall_curve.png")
 
-        # Final model: train on all folds 0-3
-        print(f"\nTraining final model on folds 0-{COMP_FOLD-1}...")
+        # Final model: train on all folds 0-3. Fold 4 is the held-out
+        # comparison fold and must stay untouched, so there's no validation set
+        # for early stopping here. Instead train for the CV-derived best-epoch
+        # count (median across folds) rather than a blind MAX_EPOCHS, and anneal
+        # the LR schedule over exactly that many epochs.
+        final_epochs = int(np.median(best_epochs))
+        print(f"\nTraining final model on folds 0-{COMP_FOLD-1} "
+              f"for {final_epochs} epochs (median CV best-epoch={best_epochs})...")
         set_seed(SEED)   # deterministic final training
         tr_final_raw = [(p, l) for p, l, f in entries if f != COMP_FOLD]
         tr_loader    = make_train_loader(tr_final_raw, SEED)
@@ -490,12 +500,12 @@ def main():
         final_model  = CoilNet()
         opt_final    = make_optimizer(final_model)
         sch_final    = torch.optim.lr_scheduler.CosineAnnealingLR(
-            opt_final, T_max=MAX_EPOCHS, eta_min=1e-7,
+            opt_final, T_max=final_epochs, eta_min=1e-7,
         )
         criterion    = (nn.CrossEntropyLoss() if USE_SAMPLER
                         else nn.CrossEntropyLoss(weight=cw_tensor))
 
-        for epoch in range(1, MAX_EPOCHS + 1):
+        for epoch in range(1, final_epochs + 1):
             train_epoch(final_model, tr_loader, opt_final, criterion)
             sch_final.step()
 
@@ -550,6 +560,7 @@ def main():
             "label_map":   LABEL_MAP,
             "threshold":   threshold,
         }, model_path)
+        warn_if_shadowed(PROD_DIR, "model.pt")
 
         metadata = {
             "approach":           "finetune_end_to_end",
@@ -568,6 +579,7 @@ def main():
             "fold4_fail_recall":  round(f4_bm["fail_recall"], 4),
             "fold4_false_reject": round(f4_bm["false_reject"], 4),
             "n_train":            len(tr_final_raw),
+            "final_epochs":       final_epochs,
             "mlflow_run_id":      run.info.run_id,
         }
         with open(PROD_DIR / "metadata.json", "w", encoding="utf-8") as f:

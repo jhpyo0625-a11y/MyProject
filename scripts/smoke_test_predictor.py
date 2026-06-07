@@ -14,6 +14,10 @@ with open(ROOT / "data/manifest.csv", encoding="utf-8") as f:
 for cls in ["Pass", "Dent", "Loose"]:
     row = random.choice([r for r in rows if r["label"] == cls])
     r = pred.predict(row["filepath"])
-    print(f"{cls:6} -> label={r['label']:6}  decision={r['decision']:8}  "
-          f"p_fail={r['p_fail']:.3f}  {r['latency_ms']:.0f}ms")
-    print(f"         {r['probabilities']}")
+    if r.get("backend") == "padim":
+        print(f"{cls:6} -> decision={r['decision']:8}  band={r['band']:10}  "
+              f"score={r['anomaly_score']:.2f}  {r['latency_ms']:.0f}ms")
+    else:
+        print(f"{cls:6} -> label={r['label']:6}  decision={r['decision']:8}  "
+              f"p_fail={r['p_fail']:.3f}  {r['latency_ms']:.0f}ms")
+        print(f"         {r['probabilities']}")

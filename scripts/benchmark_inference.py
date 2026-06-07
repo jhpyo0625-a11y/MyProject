@@ -2,8 +2,8 @@
 T4.2 -- Inference latency benchmark.
 
 Runs predictor.predict() on 20 randomly sampled raw BMP images and reports:
-  - Mean / p95 / max latency in ms
-  - Breakdown: image I/O vs preprocessing vs model forward pass
+  - Mean / min / p95 / max end-to-end latency in ms (load + crop + forward)
+  - Decision breakdown (Pass / Fail / Review)
   - Pass/fail verdict against the 1 s/image spec limit
 
 Saves a text report to reports/latency_benchmark.txt.
@@ -51,12 +51,15 @@ def main():
     for cls, paths in by_cls.items():
         n = min(5, len(paths))
         sample += random.sample(paths, n)
-    # Pad to N_IMAGES with random from all
-    all_paths = [r["filepath"] for r in rows]
-    while len(sample) < N_IMAGES:
-        p = random.choice(all_paths)
-        if p not in sample:
-            sample.append(p)
+    # Pad to N_IMAGES with random unused paths, but never loop forever if the
+    # dataset has fewer than N_IMAGES unique images.
+    sample_set = set(sample)
+    remaining  = [r["filepath"] for r in rows if r["filepath"] not in sample_set]
+    random.shuffle(remaining)
+    sample += remaining[:max(0, N_IMAGES - len(sample))]
+    if len(sample) < N_IMAGES:
+        print(f"  NOTE: only {len(sample)} unique images available "
+              f"(< {N_IMAGES} requested).")
     random.shuffle(sample)
     sample = sample[:N_IMAGES]
 
