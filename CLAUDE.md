@@ -5,7 +5,7 @@ Target: ≥95% defect recall. CPU-only. Windows line-side PC.
 
 ## Key architectural decisions (non-obvious)
 
-- **Fixed crop, not learned ROI.** Coil center is nearly fixed across all images (~±45 px jitter). Crop box `x∈[300,2000], y∈[620,1320]` in full 2448×2048 frame. Locked in `config.yaml`.
+- **Fixed crop, not learned ROI.** Coil center is nearly fixed across all images (~±45 px jitter). Crop box `x∈[300,2000], y∈[610,1480]` in full 2448×2048 frame. Locked in `config.yaml`.
 - **Frozen backbone → cached embeddings → sklearn classifier.** The CNN never trains. Embeddings are extracted once and saved to `data/embeddings/`. Retraining = re-fit the classifier only (seconds on CPU).
 - **False negative is the costlier error.** When uncertain → route to human review, never auto-pass. Threshold + review band in `config.yaml` under `decision.*`.
 - **Fold 4 is the comparison fold.** Never used in training. Used only for old-vs-new model comparison in the approval gate.
