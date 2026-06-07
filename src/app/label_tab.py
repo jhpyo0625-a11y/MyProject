@@ -85,11 +85,16 @@ class LabelTab(QWidget):
         btns.addWidget(self.btn_skip)
         root.addLayout(btns)
 
-        # keyboard shortcuts
-        QShortcut(QKeySequence("P"), self, activated=lambda: self.confirm("Pass"))
-        QShortcut(QKeySequence("D"), self, activated=lambda: self.confirm("Dent"))
-        QShortcut(QKeySequence("L"), self, activated=lambda: self.confirm("Loose"))
-        QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.skip)
+        # keyboard shortcuts -- guarded so they don't fire while the operator is
+        # typing in a text field (otherwise a name like "Paul" labels images).
+        QShortcut(QKeySequence("P"), self,
+                  activated=lambda: self._hotkey(lambda: self.confirm("Pass")))
+        QShortcut(QKeySequence("D"), self,
+                  activated=lambda: self._hotkey(lambda: self.confirm("Dent")))
+        QShortcut(QKeySequence("L"), self,
+                  activated=lambda: self._hotkey(lambda: self.confirm("Loose")))
+        QShortcut(QKeySequence(Qt.Key_Right), self,
+                  activated=lambda: self._hotkey(self.skip))
 
         self._set_enabled(False)
         self._refresh_counter()
@@ -165,6 +170,13 @@ class LabelTab(QWidget):
         self.store.skip(self.queue[self.idx])
         self.idx += 1
         self.show_current()
+
+    def _hotkey(self, fn):
+        """Run a label/skip hotkey only if no text field has focus."""
+        from PyQt5.QtWidgets import QApplication, QLineEdit
+        if isinstance(QApplication.focusWidget(), QLineEdit):
+            return
+        fn()
 
     # ------------------------------------------------------------------
     def _highlight(self, name):

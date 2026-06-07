@@ -9,6 +9,8 @@ __pycache__/
 data/crops/
 data/embeddings/**/*.npy
 data/labels.db
+data/labels.db-wal
+data/labels.db-shm
 data/prediction_log.csv
 data/raw/
 Coil-image-Dataset/
