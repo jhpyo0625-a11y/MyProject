@@ -1,0 +1,25 @@
+{
+  "approach": "finetune_end_to_end",
+  "backbone": "efficientnet_b0",
+  "n_unfreeze_blocks": 3,
+  "input_size": "224x96",
+  "classes": [
+    "Pass",
+    "Dent",
+    "Loose"
+  ],
+  "label_map": {
+    "Pass": 0,
+    "Dent": 1,
+    "Loose": 2
+  },
+  "pass_threshold": 0.429008,
+  "review_band_delta": 0.05,
+  "cv_fail_recall": 0.912,
+  "thr_fail_recall": 0.9524,
+  "thr_false_reject": 0.9329,
+  "fold4_fail_recall": 0.6486,
+  "fold4_false_reject": 0.3175,
+  "n_train": 654,
+  "mlflow_run_id": "383c5d955939482ab0a7143a101fde5b"
+}
