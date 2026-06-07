@@ -1,0 +1,52 @@
+Crop box: x=[300,2000]  y=[620,1320]  edge_threshold=72  strip=30px
+WARN  Pass/250907_151900_A35W_11-1 [1024].bmp  [top=52.4  bottom=56.6  left=109.5  right=114.7]  -> high edge(s): left=109.5, right=114.7
+WARN  Pass/250825_174651_A35W_14-1 [1024].bmp  [top=65.9  bottom=117.8  left=97.3  right=110.5]  -> high edge(s): bottom=117.8, left=97.3, right=110.5
+WARN  Pass/250930_172059_A35W_21-2 [16384].bmp  [top=59.8  bottom=105.0  left=101.1  right=116.4]  -> high edge(s): bottom=105.0, left=101.1, right=116.4
+WARN  Pass/250930_170029_A35W_8-1 [1024].bmp  [top=51.2  bottom=63.4  left=107.2  right=117.8]  -> high edge(s): left=107.2, right=117.8
+WARN  Pass/250930_170029_A35W_1-3 [16].bmp  [top=61.5  bottom=166.5  left=137.3  right=133.1]  -> high edge(s): bottom=166.5, left=137.3, right=133.1
+WARN  Pass/250907_151900_A35W_22-3 [16].bmp  [top=54.3  bottom=168.7  left=138.9  right=133.0]  -> high edge(s): bottom=168.7, left=138.9, right=133.0
+WARN  Pass/250825_174651_A35W_8-3 [16].bmp  [top=58.9  bottom=169.9  left=141.0  right=135.8]  -> high edge(s): bottom=169.9, left=141.0, right=135.8
+WARN  Pass/251016_150942_A35W_12-2 [16384].bmp  [top=48.1  bottom=73.8  left=99.3  right=111.3]  -> high edge(s): bottom=73.8, left=99.3, right=111.3
+WARN  Pass/250825_174651_A35W_39-2 [16384].bmp  [top=69.0  bottom=142.2  left=97.8  right=111.9]  -> high edge(s): bottom=142.2, left=97.8, right=111.9
+WARN  Pass/251016_150942_A35W_32-1 [1024].bmp  [top=64.4  bottom=131.0  left=106.0  right=100.4]  -> high edge(s): bottom=131.0, left=106.0, right=100.4
+WARN  Pass/251003_150040_A35W_5-2 [16].bmp  [top=55.6  bottom=96.4  left=98.6  right=110.6]  -> high edge(s): bottom=96.4, left=98.6, right=110.6
+WARN  Pass/250825_174651_A35W_17-3 [16].bmp  [top=54.4  bottom=159.7  left=132.0  right=125.5]  -> high edge(s): bottom=159.7, left=132.0, right=125.5
+WARN  Pass/250825_174651_A35W_17-1 [1024].bmp  [top=64.1  bottom=95.7  left=101.4  right=110.0]  -> high edge(s): bottom=95.7, left=101.4, right=110.0
+WARN  Pass/250825_174651_A35W_5-3 [16].bmp  [top=61.0  bottom=169.1  left=141.6  right=134.7]  -> high edge(s): bottom=169.1, left=141.6, right=134.7
+WARN  Pass/250907_154203_A35W_7-3 [16].bmp  [top=58.2  bottom=162.9  left=136.0  right=130.4]  -> high edge(s): bottom=162.9, left=136.0, right=130.4
+WARN  Dent/250930_170704_A35W_15-3 [16].bmp  [top=52.6  bottom=167.0  left=137.5  right=128.0]  -> high edge(s): bottom=167.0, left=137.5, right=128.0
+WARN  Dent/251014_135417_A35W_11-1 [1024].bmp  [top=46.4  bottom=57.9  left=107.1  right=108.4]  -> high edge(s): left=107.1, right=108.4
+WARN  Dent/250825_151708_A35W_17-3 [16].bmp  [top=54.4  bottom=168.2  left=138.1  right=130.2]  -> high edge(s): bottom=168.2, left=138.1, right=130.2
+WARN  Dent/250930_161939_A35W_1-2 [16].bmp  [top=55.4  bottom=86.7  left=102.9  right=112.6]  -> high edge(s): bottom=86.7, left=102.9, right=112.6
+WARN  Dent/251014_135417_A35W_6-1 [1024].bmp  [top=48.3  bottom=72.7  left=106.9  right=114.2]  -> high edge(s): bottom=72.7, left=106.9, right=114.2
+WARN  Dent/251003_133647_A35W_9-1 [1024].bmp  [top=54.9  bottom=69.2  left=117.6  right=120.4]  -> high edge(s): left=117.6, right=120.4
+WARN  Dent/250930_170704_A35W_14-3 [16].bmp  [top=55.8  bottom=168.9  left=138.5  right=131.7]  -> high edge(s): bottom=168.9, left=138.5, right=131.7
+WARN  Dent/251010_083430_A35W_3-1 [1024].bmp  [top=53.7  bottom=102.3  left=101.1  right=105.6]  -> high edge(s): bottom=102.3, left=101.1, right=105.6
+WARN  Dent/250930_170704_A35W_8-2 [16].bmp  [top=52.5  bottom=84.3  left=100.1  right=111.3]  -> high edge(s): bottom=84.3, left=100.1, right=111.3
+WARN  Dent/250825_151708_A35W_14-3 [16].bmp  [top=57.4  bottom=169.6  left=139.0  right=130.0]  -> high edge(s): bottom=169.6, left=139.0, right=130.0
+WARN  Dent/250907_142008_A35W_5-2 [16].bmp  [top=55.4  bottom=86.1  left=99.1  right=110.7]  -> high edge(s): bottom=86.1, left=99.1, right=110.7
+WARN  Dent/251003_125510_A35W_30-1 [1024].bmp  [top=70.8  bottom=136.3  left=101.4  right=109.8]  -> high edge(s): bottom=136.3, left=101.4, right=109.8
+WARN  Dent/250930_170704_A35W_1-1 [1024].bmp  [top=57.6  bottom=68.1  left=109.1  right=115.7]  -> high edge(s): left=109.1, right=115.7
+WARN  Dent/250907_142008_A35W_7-2 [16].bmp  [top=54.5  bottom=92.4  left=97.3  right=109.7]  -> high edge(s): bottom=92.4, left=97.3, right=109.7
+WARN  Dent/250827_104700_A35W_22-3 [16].bmp  [top=53.2  bottom=164.5  left=135.1  right=130.4]  -> high edge(s): bottom=164.5, left=135.1, right=130.4
+WARN  Loose/250907_140040_A35W_6-1 [1024].bmp  [top=55.4  bottom=74.3  left=104.8  right=113.3]  -> high edge(s): bottom=74.3, left=104.8, right=113.3
+WARN  Loose/250930_161939_A35W_4-1 [1024].bmp  [top=53.8  bottom=70.5  left=116.5  right=116.7]  -> high edge(s): left=116.5, right=116.7
+WARN  Loose/251016_140741_A35W_11-3 [262144].bmp  [top=55.6  bottom=165.7  left=139.4  right=130.6]  -> high edge(s): bottom=165.7, left=139.4, right=130.6
+WARN  Loose/251003_130559_A35W_1-1 [1024].bmp  [top=57.3  bottom=70.4  left=109.8  right=117.1]  -> high edge(s): left=109.8, right=117.1
+WARN  Loose/250825_152739_A35W_9-3 [16].bmp  [top=58.4  bottom=170.3  left=140.2  right=134.0]  -> high edge(s): bottom=170.3, left=140.2, right=134.0
+WARN  Loose/250825_152739_A35W_5-1 [1024].bmp  [top=53.6  bottom=62.2  left=107.5  right=118.4]  -> high edge(s): left=107.5, right=118.4
+WARN  Loose/251003_130559_A35W_3-1 [1024].bmp  [top=55.1  bottom=72.7  left=109.0  right=112.9]  -> high edge(s): bottom=72.7, left=109.0, right=112.9
+WARN  Loose/250825_152739_A35W_6-1 [1024].bmp  [top=53.9  bottom=83.8  left=109.7  right=117.7]  -> high edge(s): bottom=83.8, left=109.7, right=117.7
+WARN  Loose/251003_130559_A35W_16-3 [16].bmp  [top=52.5  bottom=168.8  left=139.7  right=134.7]  -> high edge(s): bottom=168.8, left=139.7, right=134.7
+WARN  Loose/251016_145335_A35W_13-3 [262144].bmp  [top=58.7  bottom=163.7  left=137.7  right=130.5]  -> high edge(s): bottom=163.7, left=137.7, right=130.5
+WARN  Loose/251003_130559_A35W_14-3 [16].bmp  [top=56.5  bottom=170.1  left=138.7  right=131.7]  -> high edge(s): bottom=170.1, left=138.7, right=131.7
+WARN  Loose/251014_141452_A35W_11-1 [16].bmp  [top=46.3  bottom=72.8  left=116.1  right=121.3]  -> high edge(s): bottom=72.8, left=116.1, right=121.3
+WARN  Loose/250930_170029_A35W_14-3 [16].bmp  [top=56.4  bottom=149.0  left=121.6  right=120.6]  -> high edge(s): bottom=149.0, left=121.6, right=120.6
+WARN  Loose/251016_140741_A35W_22-1 [16].bmp  [top=57.4  bottom=94.1  left=101.9  right=107.3]  -> high edge(s): bottom=94.1, left=101.9, right=107.3
+WARN  Loose/250825_152739_A35W_16-2 [16384].bmp  [top=63.1  bottom=112.6  left=102.5  right=117.5]  -> high edge(s): bottom=112.6, left=102.5, right=117.5
+
+============================================================
+Tested 45 images (15/class).  45 WARNINGS
+NOTE: WARN means a crop edge falls in a brighter area.
+  Inspect the montage -- if the coil is fully visible, the crop is fine.
+  If the coil is cut off, expand the crop box in config.yaml.
