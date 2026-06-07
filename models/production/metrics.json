@@ -1,0 +1,13 @@
+{
+  "kind": "padim",
+  "t_low": 23.0907,
+  "t_flag": 71.4237,
+  "n_pass_train": 507,
+  "n_fold4": 163,
+  "cv_recall_at_20fr": 0.4966,
+  "fold4_auto_pass": 0.1534,
+  "fold4_review": 0.8098,
+  "fold4_auto_flag": 0.0368,
+  "fold4_autopass_defect_miss": 0.027,
+  "fold4_flag_defect_recall": 0.1081
+}

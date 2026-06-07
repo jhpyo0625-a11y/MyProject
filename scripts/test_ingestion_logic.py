@@ -22,10 +22,11 @@ from src.labeling.label_store import LabelStore
 
 def test_assign_fold():
     for i in range(100):
-        f = _assign_fold(f"coil_{i}")
+        f = _assign_fold("sess", f"pos_{i}")
         assert 0 <= f < COMP_FOLD, f      # never the held-out comparison fold
-    assert _assign_fold("coil_7") == _assign_fold("coil_7")   # deterministic
-    print(f"  ok: _assign_fold deterministic + always in 0..{COMP_FOLD-1}")
+    # deterministic, and the same coil always maps to the same fold
+    assert _assign_fold("sess", "pos_7") == _assign_fold("sess", "pos_7")
+    print(f"  ok: _assign_fold(coil) deterministic + always in 0..{COMP_FOLD-1}")
 
 
 def test_append_manifest_dedup():

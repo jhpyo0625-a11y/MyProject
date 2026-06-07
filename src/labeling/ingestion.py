@@ -6,8 +6,11 @@ T6.3 -- Unlabeled-image ingestion + label commit helpers.
 - commit_label: the write side of the human-assist loop. When an operator
   confirms a class, the image is recorded in labels.db, copied into the curated
   data/raw/{label}/ store, and appended to manifest.csv so the next retrain
-  sees it. New labels are assigned to a CV fold in 0-3 -- never fold 4, the
-  held-out comparison fold used by the retraining approval gate.
+  sees it. Folds are assigned by physical coil (session_id + position): a new
+  image of a coil already in the manifest joins that coil's fold, and a new
+  coil is hashed into folds 0-(COMP_FOLD-1) -- never fold 4, the held-out
+  comparison fold. Keeping a coil's images in one fold prevents the leakage
+  that plain per-image assignment caused.
 """
 
 import csv
@@ -48,11 +51,32 @@ def watch_folder_path():
     return Path(wf) if wf else None
 
 
-def _assign_fold(stem: str) -> int:
-    """Deterministic CV fold in [0, COMP_FOLD) from the filename -- stable so a
-    re-imported image always lands in the same fold. Never the comparison fold."""
-    h = zlib.crc32(stem.encode("utf-8"))
-    return h % COMP_FOLD
+def _coil(session: str, position: str) -> str:
+    """Physical-coil identity -- the grouping key (matches src.data.split.coil_id)."""
+    return f"{session}|{position}"
+
+
+def _assign_fold(session: str, position: str) -> int:
+    """Deterministic CV fold in [0, COMP_FOLD) for a NEW coil, hashing the coil
+    identity so all of its images share a fold. Matches
+    src.data.split._incremental_fold. Never the held-out comparison fold."""
+    return zlib.crc32(_coil(session, position).encode("utf-8")) % COMP_FOLD
+
+
+def _existing_coil_fold(session: str, position: str):
+    """Fold of this coil if it's already in the manifest, else None. Reusing it
+    keeps every image of a physical coil in one fold across retrains (no leak).
+    A coil already in the comparison fold keeps growing it -- leakage-freedom is
+    preferred over a perfectly frozen yardstick; only NEW coils are barred from
+    fold 4."""
+    if not MANIFEST.exists():
+        return None
+    with open(MANIFEST, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            if (r.get("session_id", ""), r.get("position", "")) == (session, position) \
+                    and (r.get("fold") or "") != "":
+                return r["fold"]
+    return None
 
 
 def commit_label(src_path, human_label, store, operator_id=None) -> dict:
@@ -76,15 +100,20 @@ def commit_label(src_path, human_label, store, operator_id=None) -> dict:
 
     # 2) append to manifest (skip if this filepath is already present)
     parsed = parse_filename(src_path.name)
+    session  = parsed.get("session", "")
+    position = parsed.get("position", "")
+    fold = _existing_coil_fold(session, position)
+    if fold is None:                       # new coil -> hash into folds 0..COMP_FOLD-1
+        fold = str(_assign_fold(session, position))
     row = {
         "filepath":   str(dest),
         "label":      human_label,
-        "session_id": parsed.get("session", ""),
+        "session_id": session,
         "sensor":     parsed.get("sensor", ""),
-        "position":   parsed.get("position", ""),
+        "position":   position,
         "layer":      parsed.get("layer", ""),
         "param":      parsed.get("param") or "",
-        "fold":       _assign_fold(src_path.stem),
+        "fold":       fold,
     }
     _append_manifest(row)
 

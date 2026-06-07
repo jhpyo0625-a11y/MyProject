@@ -14,16 +14,17 @@ confirmation grows the defect set.
 
 | Band | Rule | Action |
 |---|---|---|
-| AUTO-FLAG | score >= 73.014 | clear defect -- human confirms before scrap |
-| REVIEW    | 23.379 <= score < 73.014 | human looks |
-| AUTO-PASS | score < 23.379 | clearly normal -- offloads easy bulk |
+| AUTO-FLAG | score >= 71.424 | clear defect -- human confirms before scrap |
+| REVIEW    | 23.091 <= score < 71.424 | human looks |
+| AUTO-PASS | score < 23.091 | clearly normal -- offloads easy bulk |
 
 Thresholds derived from OOF (folds 0-3); defects only used to place bands.
 
 ## Workload (held-out fold 4)
 
-- AUTO-PASS 18% / REVIEW 77% / AUTO-FLAG 5%
-- **Defects auto-passed (critical, must stay ~0): 0.0%**
-- Defects auto-flagged: 19%
+- AUTO-PASS 15% / REVIEW 81% / AUTO-FLAG 4%
+- **Defects auto-passed (critical, must stay ~0): 2.7%**
+- Defects auto-flagged: 11%
 
-NOT a >=95% auto-recall gate. Honest CV Fail-recall @20% FR ~= 55%.
+NOT a >=95% auto-recall gate. Honest CV Fail-recall @20% FR = 50%
+(coil-grouped folds -- no same-coil leakage between train and validation).
