@@ -6,6 +6,7 @@
 ![Model](https://img.shields.io/badge/model-PaDiM%20%C2%B7%20human--assist-orange)
 ![Unit tests](https://img.shields.io/badge/unit%20tests-4%20suites%20passing-brightgreen)
 ![Defect recall](https://img.shields.io/badge/CV%20recall%20%4020%25%20FR-49.7%25%20(honest)-yellow)
+![License](https://img.shields.io/badge/license-proprietary-red)
 
 Classify PCB-mounted induction coil images as **Pass / Dent / Loose** (+ a binary
 Pass/Fail gate), CPU-only on a Windows line-side PC.
