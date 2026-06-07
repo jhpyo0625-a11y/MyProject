@@ -166,7 +166,7 @@ def main():
     print(f"  Samples:    {samples_path}")
     print(f"  Brightness: {brightness_path}")
     if flagged:
-        print(f"\n  WARNING: {len(flagged)} suspicious image(s) flagged — see eda_report.md")
+        print(f"\n  WARNING: {len(flagged)} suspicious image(s) flagged -- see eda_report.md")
 
 
 if __name__ == "__main__":

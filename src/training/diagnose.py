@@ -144,6 +144,12 @@ def part_c(rows):
     print("=" * 66)
 
     predictor = Predictor()
+    if getattr(predictor, "_type", None) != "pytorch":
+        print(f"  SKIPPED: this diagnostic profiles the supervised model.pt "
+              f"(per-class label errors), but the deployed backend is "
+              f"'{predictor._type}'. Point production at a model.pt to run it.")
+        return [], []
+
     f4 = [r for r in rows if int(r["fold"]) == COMP_FOLD]
 
     records = []

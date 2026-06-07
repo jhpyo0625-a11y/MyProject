@@ -9,6 +9,8 @@ __pycache__/
 data/crops/
 data/embeddings/**/*.npy
 data/labels.db
+data/labels.db-wal
+data/labels.db-shm
 data/prediction_log.csv
 data/raw/
 Coil-image-Dataset/
@@ -20,12 +22,19 @@ raw_preview_*.png
 # Archived models (track production snapshot only)
 models/archive/
 
+# Retrain candidate (transient, 63MB) + operational state
+models/candidate/
+models/production/retrain_state.json
+
 # PaDiM detector artifact (61MB, regenerable via `python -m src.training.anomaly`)
 models/production/padim.pkl
 
 # MLflow run data
 experiments/
 mlruns/
+
+# Generated per-run retrain comparison reports (timestamped, regenerable)
+reports/model_comparison_*.md
 
 # Scratch exploration plots (regenerable)
 reports/aug_check.png

@@ -23,6 +23,7 @@ paths:
   models_dir: models
   prediction_log: data/prediction_log.csv
   production_dir: models/production
+  raw_dir: data/raw
   reports: reports
   watch_folder: ''
 preprocessing:

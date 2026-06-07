@@ -32,14 +32,13 @@ from src.inference.predictor import Predictor
 from src.labeling.label_store import LabelStore
 
 
-def test_gui(pred, cfg):
+def test_gui(pred, cfg, bmp):
     from src.app.main import MainWindow
     store = LabelStore(db_path=Path(tempfile.gettempdir()) / "app_smoke.db")
     win = MainWindow(pred, store, cfg)
     tabs = [win.tabs.tabText(i) for i in range(win.tabs.count())]
     assert tabs == ["Inspect", "Label", "Retrain"], tabs
 
-    bmp = sorted(glob.glob("Coil-image-Dataset/**/*.bmp", recursive=True))[0]
     win.inspect.show_image(bmp)
     badge = win.inspect.badge.text()
     assert badge in ("PASS", "REVIEW", "FAIL"), badge
@@ -48,7 +47,7 @@ def test_gui(pred, cfg):
           f"meter={win.inspect.meter.value()}")
 
 
-def test_ingestion(pred):
+def test_ingestion(pred, cfg, bmp):
     import src.labeling.ingestion as ing
     tmp = Path(tempfile.mkdtemp(prefix="coil_ing_"))
     # redirect side-effect targets into the sandbox
@@ -56,7 +55,7 @@ def test_ingestion(pred):
     ing.MANIFEST = tmp / "manifest.csv"
     store = LabelStore(db_path=tmp / "labels.db")
 
-    bmp = Path(sorted(glob.glob("Coil-image-Dataset/**/*.bmp", recursive=True))[0])
+    bmp = Path(bmp)
     store.insert_pending(bmp, session_id="smoke")
     row = ing.commit_label(bmp, "Dent", store, operator_id="tester")
 
@@ -73,10 +72,15 @@ def test_ingestion(pred):
 if __name__ == "__main__":
     app = QApplication([])
     cfg = load_config()
+    samples = sorted(glob.glob("Coil-image-Dataset/**/*.bmp", recursive=True))
+    if not samples:
+        print("SKIP: no sample BMPs under Coil-image-Dataset/ (dataset not present)")
+        sys.exit(0)
+    bmp = samples[0]
     print("Loading predictor...")
     pred = Predictor()
     print("Testing GUI (offscreen)...")
-    test_gui(pred, cfg)
+    test_gui(pred, cfg, bmp)
     print("Testing label commit / ingestion (sandboxed)...")
-    test_ingestion(pred)
+    test_ingestion(pred, cfg, bmp)
     print("SMOKE OK")

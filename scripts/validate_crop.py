@@ -32,6 +32,7 @@ cfg = load_config()
 EDGE_STRIP_PX  = 30    # pixels inside crop edge to sample
 EDGE_THRESHOLD = 72    # mean luminance above this -> crop may cut content
 N_PER_CLASS    = 15
+WARN_FAIL_FRAC = 0.5   # exit non-zero if > this fraction of images warn (real gate)
 REPORTS        = ROOT / "reports"
 REPORTS.mkdir(exist_ok=True)
 
@@ -105,7 +106,7 @@ def main():
         sample = random.sample(by_cls[cls], min(N_PER_CLASS, len(by_cls[cls])))
         for row in sample:
             path = Path(row["filepath"])
-            img  = Image.open(path)
+            img  = Image.open(path).convert("RGB")
             res  = check_crop_edges(img)
             warns = res["warnings"]
             status = "WARN" if warns else "PASS"
@@ -152,7 +153,13 @@ def main():
     print(f"\nMontage -> {montage_path}")
     print(f"Log     -> {log_path}")
 
-    # fail on hard errors only (not warnings)
+    # Real gate: fail if too many sampled images warn (crop box likely cuts
+    # content). A handful of bright-edge warnings is fine; a majority is not.
+    warn_frac = len(warn_images) / max(total_tested, 1)
+    if warn_frac > WARN_FAIL_FRAC:
+        print(f"\nFAIL: {warn_frac:.0%} of images warn (> {WARN_FAIL_FRAC:.0%}). "
+              f"Inspect the montage and fix the crop box in config.yaml.")
+        sys.exit(1)
     sys.exit(0)
 
 

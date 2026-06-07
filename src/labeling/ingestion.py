@@ -23,10 +23,9 @@ from src.data.config_loader import load_config
 from src.data.build_manifest import parse_filename
 
 _cfg       = load_config()
-RAW_DIR    = ROOT / "data" / "raw"
+RAW_DIR    = ROOT / _cfg["paths"]["raw_dir"]
 MANIFEST   = ROOT / _cfg["paths"]["manifest"]
 COMP_FOLD  = _cfg["training"]["comparison_fold"]
-N_FOLDS    = _cfg["training"]["n_folds"]
 MANIFEST_FIELDS = ["filepath", "label", "session_id", "sensor",
                    "position", "layer", "param", "fold"]
 
@@ -57,23 +56,25 @@ def _assign_fold(stem: str) -> int:
 
 
 def commit_label(src_path, human_label, store, operator_id=None) -> dict:
-    """Confirm a label end-to-end: DB + curated copy + manifest append.
+    """Confirm a label end-to-end: curated copy + manifest append + DB record.
+
+    The recoverable filesystem work (copy, manifest) runs FIRST and the DB
+    confirmation LAST, so a failure (disk full, unparseable name) leaves the
+    label simply not-done rather than counted-but-missing-from-the-manifest --
+    which would otherwise over-count the Phase 7 retrain trigger.
 
     Returns the manifest row that was written. Idempotent on the manifest
     (won't duplicate a filepath already present)."""
     src_path = Path(src_path)
 
-    # 1) record the human decision
-    store.confirm_label(src_path, human_label, operator_id=operator_id)
-
-    # 2) copy into the curated raw store (keep original untouched)
+    # 1) copy into the curated raw store (keep original untouched)
     dest_dir = RAW_DIR / human_label
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / src_path.name
     if not dest.exists():
         shutil.copy2(src_path, dest)
 
-    # 3) append to manifest (skip if this filepath is already present)
+    # 2) append to manifest (skip if this filepath is already present)
     parsed = parse_filename(src_path.name)
     row = {
         "filepath":   str(dest),
@@ -86,6 +87,9 @@ def commit_label(src_path, human_label, store, operator_id=None) -> dict:
         "fold":       _assign_fold(src_path.stem),
     }
     _append_manifest(row)
+
+    # 3) record the human decision LAST -- only count it once the data is durable
+    store.confirm_label(src_path, human_label, operator_id=operator_id)
     return row
 
 

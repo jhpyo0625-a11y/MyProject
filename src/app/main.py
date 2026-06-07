@@ -26,7 +26,8 @@ sys.path.insert(0, str(ROOT))
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QAction, QApplication, QLabel, QMainWindow, QMessageBox, QTabWidget,
+    QAction, QApplication, QDialog, QLabel, QMainWindow, QMessageBox,
+    QPushButton, QTabWidget, QTextBrowser, QVBoxLayout,
 )
 
 from src.data.config_loader import load_config
@@ -95,11 +96,17 @@ class MainWindow(QMainWindow):
         card = ROOT / self.cfg["paths"]["production_dir"] / "padim_card.md"
         text = (card.read_text(encoding="utf-8") if card.exists()
                 else "No model card found.")
-        box = QMessageBox(self)
-        box.setWindowTitle("Model Card")
-        box.setText(text)
-        box.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        box.exec_()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Model Card")
+        dlg.resize(620, 540)
+        lay = QVBoxLayout(dlg)
+        view = QTextBrowser()
+        view.setMarkdown(text)
+        lay.addWidget(view)
+        close = QPushButton("Close")
+        close.clicked.connect(dlg.accept)
+        lay.addWidget(close)
+        dlg.exec_()
 
     def _on_label_committed(self):
         self.retrain.refresh()

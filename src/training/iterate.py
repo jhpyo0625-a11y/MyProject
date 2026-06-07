@@ -45,7 +45,7 @@ from src.training.dataset import LABEL_MAP, LABEL_NAMES, load_embeddings
 from src.training.train import (
     COMP_FOLD, DELTA, TARGET_RECALL,
     binary_metrics, p_fail_from_proba, per_class_recall,
-    plot_cm, plot_pr, tune_threshold,
+    plot_cm, plot_pr, tune_threshold, warn_if_shadowed,
 )
 
 cfg      = load_config()
@@ -168,7 +168,7 @@ def main():
     pl = make_gbt()
     recall, *oof = cv_run(X, y3, y_bin, folds, is_aug, pl)
     print(f"  CV FailRecall={recall:.3f}")
-    results.append((f"GBT n=200 d=3", pl, recall, oof))
+    results.append(("GBT n=200 d=3", pl, recall, oof))
 
     # ── Pick winner ───────────────────────────────────────────
     print("\n" + "=" * 62)
@@ -242,6 +242,7 @@ def main():
     # ── Save winner ───────────────────────────────────────────
     with open(PROD_DIR / "classifier.pkl", "wb") as f:
         pickle.dump(winner_pl, f)
+    warn_if_shadowed(PROD_DIR, "classifier.pkl")
 
     metadata = {
         "backbone":           cfg["model"]["backbone"],

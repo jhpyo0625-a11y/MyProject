@@ -53,7 +53,7 @@ def load_embeddings(cfg: dict, root: Path):
         lbl_list.append(lbl)
 
     if missing:
-        print(f"  WARNING: {len(missing)} embedding file(s) not found — skipped.")
+        print(f"  WARNING: {len(missing)} embedding file(s) not found -- skipped.")
 
     return (
         np.array(X_list,    dtype=np.float32),
