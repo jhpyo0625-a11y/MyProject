@@ -1,0 +1,14 @@
+Inference Latency Benchmark
+========================================
+Model type    : pytorch
+Images tested : 20
+Spec limit    : 1000 ms/image
+
+Mean          : 53.4 ms
+Min           : 45.9 ms
+p95           : 64.1 ms
+Max           : 71.6 ms
+
+Decisions     : Pass=9  Fail=8  Review=3
+
+Verdict       : PASS  (max 71.6ms vs limit 1000ms)
