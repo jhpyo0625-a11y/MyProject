@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
     QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from src.app.imaging import load_full_with_box
+from src.app.imaging import load_full_with_box, load_full_with_heatmap
 
 # verdict -> (label text, background color)
 VERDICT_STYLE = {
@@ -60,6 +60,7 @@ class InspectTab(QWidget):
         self.status_cb = status_cb or (lambda *_: None)
         self._batch_results = []
         self._worker = None
+        self._current = None          # (path, result) currently displayed
         self._build()
 
     # ------------------------------------------------------------------
@@ -77,6 +78,12 @@ class InspectTab(QWidget):
         self.btn_export.clicked.connect(self.export_csv)
         for b in (self.btn_image, self.btn_folder, self.btn_export):
             controls.addWidget(b)
+        self.btn_heatmap = QPushButton("Defect heatmap")
+        self.btn_heatmap.setCheckable(True)
+        self.btn_heatmap.setToolTip(
+            "Overlay the PaDiM anomaly heatmap to show where the coil was flagged")
+        self.btn_heatmap.toggled.connect(self._on_toggle_heatmap)
+        controls.addWidget(self.btn_heatmap)
         controls.addStretch(1)
         root.addLayout(controls)
 
@@ -147,19 +154,38 @@ class InspectTab(QWidget):
             self.show_image(path)
 
     def show_image(self, path):
+        self._display(path)
+
+    def _display(self, path):
+        """Localize (one forward pass) and render the verdict panel + image.
+        Used for single-image open and batch row selection."""
         try:
-            r = self.predictor.predict(path)
+            r = self.predictor.localize(path)
         except Exception as e:
             self.status_cb(f"Inference failed: {e}")
             return
-        self._render_image(path)
+        self._current = (path, r)
         self._render_result(r)
-        self.status_cb(f"Inspected {Path(path).name}  ->  {r['band']}")
+        self._render_image(path, r)
+        self.status_cb(f"Inspected {Path(path).name}  ->  {r.get('band', '--')}")
 
-    def _render_image(self, path):
-        pix = load_full_with_box(path, self.predictor.crop)
+    def _render_image(self, path, r=None):
+        heat = (self.btn_heatmap.isChecked() and r is not None
+                and r.get("amap") is not None)
+        if heat:
+            pix = load_full_with_heatmap(
+                path, self.predictor.crop, r["amap"], r.get("peak"),
+                t_flag=r.get("thresholds", {}).get("t_flag"))
+        else:
+            pix = load_full_with_box(path, self.predictor.crop)
         self.image_label.setPixmap(pix.scaled(
             self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def _on_toggle_heatmap(self, _checked):
+        if self._current:
+            self._render_image(*self._current)
+        elif self.btn_heatmap.isChecked():
+            self.status_cb("Open an image to see the defect heatmap")
 
     def _render_result(self, r):
         decision = r["decision"]
@@ -233,9 +259,10 @@ class InspectTab(QWidget):
         if rows and self._batch_results:
             idx = rows[0].row()
             if idx < len(self._batch_results):
-                path, r = self._batch_results[idx]
-                self._render_image(path)
-                self._render_result(r)
+                path, _ = self._batch_results[idx]
+                # re-localize the selected row so the heatmap (which the scalar
+                # batch result doesn't carry) is available on demand
+                self._display(str(path))
 
     def export_csv(self):
         if not self._batch_results:

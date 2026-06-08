@@ -21,3 +21,19 @@ for cls in ["Pass", "Dent", "Loose"]:
         print(f"{cls:6} -> label={r['label']:6}  decision={r['decision']:8}  "
               f"p_fail={r['p_fail']:.3f}  {r['latency_ms']:.0f}ms")
         print(f"         {r['probabilities']}")
+
+# localize() exposes the spatial heatmap (defect localization) -- verify it is
+# consistent: the map's max must equal the reported scalar score, and the peak
+# patch must lie inside the grid.
+loc = pred.localize(random.choice(rows)["filepath"])
+if loc.get("amap") is not None:
+    amap = loc["amap"]
+    h, w = loc["amap_hw"]
+    pr, pc = loc["peak"]
+    assert amap.shape == (h, w), amap.shape
+    assert 0 <= pr < h and 0 <= pc < w, loc["peak"]
+    assert abs(float(amap.max()) - loc["anomaly_score"]) < 0.01
+    print(f"localize ok: heatmap {amap.shape}  peak=(r{pr},c{pc})  "
+          f"max==score ({loc['anomaly_score']:.2f})")
+else:
+    print("localize ok: non-PaDiM backend (no heatmap)")
