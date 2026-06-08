@@ -18,7 +18,9 @@ from PyQt5.QtWidgets import (
     QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from src.app.imaging import load_full_with_box, load_full_with_heatmap
+from src.app.imaging import (
+    load_full_with_box, load_full_with_heatmap, load_clean_coil,
+)
 
 # verdict -> (label text, background color)
 VERDICT_STYLE = {
@@ -78,11 +80,17 @@ class InspectTab(QWidget):
         self.btn_export.clicked.connect(self.export_csv)
         for b in (self.btn_image, self.btn_folder, self.btn_export):
             controls.addWidget(b)
+        self.btn_clean = QPushButton("Clean coil")
+        self.btn_clean.setCheckable(True)
+        self.btn_clean.setToolTip(
+            "Isolate the coil: dim the PCB background so the winding is easy to read")
+        self.btn_clean.toggled.connect(self._on_toggle_view)
+        controls.addWidget(self.btn_clean)
         self.btn_heatmap = QPushButton("Defect heatmap")
         self.btn_heatmap.setCheckable(True)
         self.btn_heatmap.setToolTip(
             "Overlay the PaDiM anomaly heatmap to show where the coil was flagged")
-        self.btn_heatmap.toggled.connect(self._on_toggle_heatmap)
+        self.btn_heatmap.toggled.connect(self._on_toggle_view)
         controls.addWidget(self.btn_heatmap)
         controls.addStretch(1)
         root.addLayout(controls)
@@ -170,9 +178,10 @@ class InspectTab(QWidget):
         self.status_cb(f"Inspected {Path(path).name}  ->  {r.get('band', '--')}")
 
     def _render_image(self, path, r=None):
-        heat = (self.btn_heatmap.isChecked() and r is not None
-                and r.get("amap") is not None)
-        if heat:
+        if self.btn_clean.isChecked():
+            pix = load_clean_coil(path, self.predictor.crop)
+        elif (self.btn_heatmap.isChecked() and r is not None
+              and r.get("amap") is not None):
             pix = load_full_with_heatmap(
                 path, self.predictor.crop, r["amap"], r.get("peak"),
                 t_flag=r.get("thresholds", {}).get("t_flag"))
@@ -181,11 +190,18 @@ class InspectTab(QWidget):
         self.image_label.setPixmap(pix.scaled(
             self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
-    def _on_toggle_heatmap(self, _checked):
+    def _on_toggle_view(self, checked):
+        # the two views are mutually exclusive
+        if checked:
+            other = self.btn_heatmap if self.sender() is self.btn_clean else self.btn_clean
+            if other.isChecked():
+                other.blockSignals(True)
+                other.setChecked(False)
+                other.blockSignals(False)
         if self._current:
             self._render_image(*self._current)
-        elif self.btn_heatmap.isChecked():
-            self.status_cb("Open an image to see the defect heatmap")
+        elif checked:
+            self.status_cb("Open an image first")
 
     def _render_result(self, r):
         decision = r["decision"]
