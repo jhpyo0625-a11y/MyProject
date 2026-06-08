@@ -71,8 +71,20 @@ def load_full_with_heatmap(path, crop_box, amap, peak=None, t_flag=None,
     norm_up = np.asarray(up, dtype=np.float32) / 255.0          # (ch, cw)
     heat = _anomaly_colormap(norm_up).astype(np.float32)        # (ch, cw, 3)
 
-    a = (alpha * norm_up)[..., None]                            # blend weighted by heat
+    # Restrict the heatmap to the detected coil so background false-flags (IC
+    # glints, traces) don't paint outside it. Segment at the tuned working width.
     region = arr[y0:y1, x0:x1]
+    seg = np.asarray(Image.fromarray(region.astype(np.uint8)).resize(
+        (_SEG_W, max(1, round(_SEG_W * ch / cw))), Image.BILINEAR), dtype=np.float32)
+    cmask = _segment_coil(seg)
+    if cmask is not None and cmask.any():
+        cm = np.asarray(Image.fromarray((cmask * 255).astype(np.uint8))
+                        .resize((cw, ch), Image.BILINEAR), dtype=np.float32) / 255.0 > 0.5
+        peak = _coil_peak(cmask, amap, peak)
+    else:
+        cm = np.ones((ch, cw), dtype=bool)                     # fallback: full heatmap
+
+    a = (alpha * norm_up * cm)[..., None]                      # heatmap only on the coil
     arr[y0:y1, x0:x1] = region * (1.0 - a) + heat * a
     out = Image.fromarray(arr.astype(np.uint8))
 
@@ -130,6 +142,20 @@ def _segment_coil(rgb: np.ndarray):
     return ndimage.binary_opening(coil, np.ones((5, 5)))
 
 
+def _coil_peak(mask: np.ndarray, amap: np.ndarray, default):
+    """Hottest anomaly patch INSIDE the coil mask (so the peak box stays on the
+    coil once the heatmap is coil-masked). `mask` is any-resolution bool; falls
+    back to `default` if no coil patch is flagged."""
+    h, w = amap.shape
+    mp = np.asarray(Image.fromarray((mask * 255).astype(np.uint8))
+                    .resize((w, h), Image.BILINEAR), dtype=np.float32) / 255.0 > 0.3
+    scored = amap * mp
+    if scored.max() > 0:
+        r, c = np.unravel_index(int(scored.argmax()), scored.shape)
+        return int(r), int(c)
+    return default
+
+
 def load_clean_coil(path, crop_box, max_side=900, dim=0.30,
                     amap=None, peak=None, t_flag=None) -> QPixmap:
     """The coil isolated: crop to the ROI, segment the coil from its winding
@@ -159,8 +185,10 @@ def load_clean_coil(path, crop_box, max_side=900, dim=0.30,
         up = np.asarray(Image.fromarray((norm * 255).astype(np.uint8))
                         .resize((W, H), Image.BILINEAR), dtype=np.float32) / 255.0
         heat = _anomaly_colormap(up).astype(np.float32)
-        a = (0.6 * up)[..., None]
+        a = (0.6 * up * mask)[..., None]                # heatmap only on the coil
         out = out * (1.0 - a) + heat * a
+        if peak is not None:
+            peak = _coil_peak(mask, amap, peak)         # mark the hottest COIL patch
 
     edge = np.asarray(Image.fromarray((mask * 255).astype(np.uint8))
                       .filter(ImageFilter.FIND_EDGES)) > 40
