@@ -42,9 +42,19 @@ def test_gui(pred, cfg, bmp):
     win.inspect.show_image(bmp)
     badge = win.inspect.badge.text()
     assert badge in ("PASS", "REVIEW", "FAIL"), badge
+
+    # toggle the defect heatmap overlay and re-render (exercises localize ->
+    # load_full_with_heatmap end-to-end; must not raise and must set a pixmap)
+    heat_ok = "n/a"
+    if win.inspect._current and win.inspect._current[1].get("amap") is not None:
+        win.inspect.btn_heatmap.setChecked(True)
+        assert not win.inspect.image_label.pixmap().isNull(), "heatmap pixmap empty"
+        win.inspect.btn_heatmap.setChecked(False)
+        heat_ok = "rendered"
+
     win.retrain.refresh()
     print(f"  GUI ok: tabs={tabs}  inspect badge={badge}  "
-          f"meter={win.inspect.meter.value()}")
+          f"meter={win.inspect.meter.value()}  heatmap={heat_ok}")
 
 
 def test_ingestion(pred, cfg, bmp):

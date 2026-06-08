@@ -200,8 +200,13 @@ class Predictor:
         return torch.softmax(logits, dim=-1).numpy()[0]  # (3,)
 
     @torch.no_grad()
-    def _score_padim(self, crop_arr: np.ndarray) -> float:
-        """uint8 crop -> image anomaly score (max patch Mahalanobis distance)."""
+    def _padim_score_map(self, crop_arr: np.ndarray):
+        """uint8 crop -> (image score, per-patch anomaly map of shape (h, w)).
+
+        The image score is the MAX patch Mahalanobis distance; the map is the
+        same per-patch distances reshaped to the stride-8 grid -- i.e. WHERE the
+        anomaly is. _score_padim() keeps only the scalar; localize() keeps both.
+        """
         t = (torch.from_numpy(crop_arr.copy()).float().div(255.0)
              .permute(2, 0, 1)[None])
         t = F.interpolate(t, size=(self._input_h, self._input_w),
@@ -216,7 +221,13 @@ class Predictor:
         X = feat.squeeze(0).reshape(C, -1).T.numpy()         # (L, R)
         d = X - self._pd_mean                                # (L, R)
         m = np.einsum("lr,lrs,ls->l", d, self._pd_inv, d)    # (L,)
-        return float(np.sqrt(np.maximum(m, 0.0)).max())
+        dist = np.sqrt(np.maximum(m, 0.0))                   # (L,)
+        h, w = int(ref_hw[0]), int(ref_hw[1])
+        return float(dist.max()), dist.reshape(h, w)         # scalar, (h, w)
+
+    def _score_padim(self, crop_arr: np.ndarray) -> float:
+        """uint8 crop -> image anomaly score (max patch Mahalanobis distance)."""
+        return self._padim_score_map(crop_arr)[0]
 
     @torch.no_grad()
     def _probs_sklearn(self, crop_arr: np.ndarray) -> np.ndarray:
@@ -320,12 +331,10 @@ class Predictor:
             "latency_ms":    round((time.perf_counter() - t0) * 1000, 1),
         }
 
-    def _predict_padim(self, crop: np.ndarray, t0: float) -> dict:
-        """Human-assist 3-band decision from the PaDiM anomaly score."""
-        score = self._score_padim(crop)
+    def _padim_result(self, score: float, t0: float) -> dict:
+        """Build the human-assist result dict from a PaDiM image score."""
         band, decision = self._decide_padim(
             score, self._pd_t_low, self._pd_t_flag)
-
         return {
             "backend":       "padim",
             "decision":      decision,
@@ -338,6 +347,32 @@ class Predictor:
                               "t_flag": round(self._pd_t_flag, 3)},
             "latency_ms":    round((time.perf_counter() - t0) * 1000, 1),
         }
+
+    def _predict_padim(self, crop: np.ndarray, t0: float) -> dict:
+        """Human-assist 3-band decision from the PaDiM anomaly score."""
+        return self._padim_result(self._score_padim(crop), t0)
+
+    def localize(self, image_path: Union[str, Path]) -> dict:
+        """Like predict(), but for the PaDiM backend also returns the spatial
+        anomaly heatmap so the UI can show WHERE the coil was flagged.
+
+        Extra keys (PaDiM only):
+            amap    : (h, w) float ndarray of per-patch Mahalanobis distances
+            amap_hw : (h, w) grid shape
+            peak    : (row, col) of the hottest patch (the one that set the score)
+        For non-PaDiM backends `amap` is None. One forward pass, on-demand only --
+        predict() and the batch path stay scalar so CSV export is unaffected."""
+        if self._type != "padim":
+            return {**self.predict(image_path), "amap": None}
+        t0 = time.perf_counter()
+        crop = self._load_crop(image_path)
+        score, amap = self._padim_score_map(crop)
+        res = self._padim_result(score, t0)
+        res["amap"]    = amap
+        res["amap_hw"] = (int(amap.shape[0]), int(amap.shape[1]))
+        res["peak"]    = tuple(int(v) for v in
+                               np.unravel_index(int(amap.argmax()), amap.shape))
+        return res
 
     def predict_batch(self, image_paths) -> list[dict]:
         """Convenience wrapper: run predict() on each path in order."""
