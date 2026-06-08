@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from src.app.imaging import load_crop_pixmap
+from src.app.imaging import load_crop_pixmap, load_clean_coil
 from src.labeling import ingestion
 
 SUGGEST = {"AUTO-PASS": "Pass", "REVIEW": None, "AUTO-FLAG": None}
@@ -49,6 +49,12 @@ class LabelTab(QWidget):
         self.operator = QLineEdit("operator")
         self.operator.setFixedWidth(140)
         top.addWidget(self.operator)
+        self.btn_clean = QPushButton("Clean coil")
+        self.btn_clean.setCheckable(True)
+        self.btn_clean.setToolTip(
+            "Dim the PCB background so the coil winding is easier to inspect")
+        self.btn_clean.toggled.connect(self._on_toggle_clean)
+        top.addWidget(self.btn_clean)
         top.addStretch(1)
         self.counter = QLabel("0 labeled today")
         top.addWidget(self.counter)
@@ -126,9 +132,7 @@ class LabelTab(QWidget):
             return
         path = self.queue[self.idx]
         self._set_enabled(True)
-        pix = load_crop_pixmap(path, self.predictor.crop)
-        self.image_label.setPixmap(pix.scaled(
-            self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self._render_image(path)
 
         try:
             r = self.predictor.predict(path)
@@ -170,6 +174,17 @@ class LabelTab(QWidget):
         self.store.skip(self.queue[self.idx])
         self.idx += 1
         self.show_current()
+
+    def _render_image(self, path):
+        pix = (load_clean_coil(path, self.predictor.crop)
+               if self.btn_clean.isChecked()
+               else load_crop_pixmap(path, self.predictor.crop))
+        self.image_label.setPixmap(pix.scaled(
+            self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def _on_toggle_clean(self, _checked):
+        if self.idx < len(self.queue):
+            self._render_image(self.queue[self.idx])
 
     def _hotkey(self, fn):
         """Run a label/skip hotkey only if no text field has focus."""

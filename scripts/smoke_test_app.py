@@ -52,9 +52,17 @@ def test_gui(pred, cfg, bmp):
         win.inspect.btn_heatmap.setChecked(False)
         heat_ok = "rendered"
 
+    # toggle the clean-coil view (exercises load_clean_coil end-to-end); it must
+    # render and turning it on must clear the (mutually-exclusive) heatmap toggle
+    win.inspect.btn_heatmap.setChecked(True)
+    win.inspect.btn_clean.setChecked(True)
+    assert not win.inspect.btn_heatmap.isChecked(), "toggles not mutually exclusive"
+    assert not win.inspect.image_label.pixmap().isNull(), "clean-coil pixmap empty"
+    win.inspect.btn_clean.setChecked(False)
+
     win.retrain.refresh()
     print(f"  GUI ok: tabs={tabs}  inspect badge={badge}  "
-          f"meter={win.inspect.meter.value()}  heatmap={heat_ok}")
+          f"meter={win.inspect.meter.value()}  heatmap={heat_ok}  clean-coil=rendered")
 
 
 def test_ingestion(pred, cfg, bmp):
