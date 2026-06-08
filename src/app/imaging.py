@@ -2,8 +2,6 @@
 and convert to Qt pixmaps. Kept binding-agnostic of Pillow's ImageQt by going
 through a numpy buffer (robust across PyQt/Pillow versions)."""
 
-from pathlib import Path
-
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from PyQt5.QtGui import QImage, QPixmap
@@ -95,69 +93,59 @@ def load_full_with_heatmap(path, crop_box, amap, peak=None, t_flag=None,
 
 # ---------------------------------------------------------------------------
 # Clean-coil view: isolate the coil winding by dimming the PCB background.
-# DISPLAY AID ONLY -- this does not touch the detector (masking the model gave
-# no recall gain; see the masked-PaDiM ablation). It just helps the operator
-# see the coil amid the busy PCB. The coil template (annulus mask + alignment
-# reference) is a committed asset built from the isolated-coil reference.
+# DISPLAY AID ONLY -- it does not touch the detector (masking the model gave no
+# recall gain; see the masked-PaDiM ablation). The coil is segmented PER IMAGE
+# from its winding texture, so the highlight conforms to each coil's actual
+# position and shape -- a single fixed template mask misaligned because coil
+# placement varies between images.
 # ---------------------------------------------------------------------------
 
-_TEMPLATE = None   # lazy cache: {"mask", "fft", "hw"} or False if asset missing
+_SEG_W = 850   # working width for segmentation (morphology kernels tuned to it)
 
 
-def _coilness(g: np.ndarray) -> np.ndarray:
-    """Coarse coil structure for alignment (blur away the fine winding lines)."""
-    b = np.asarray(Image.fromarray(g.astype(np.uint8))
-                   .filter(ImageFilter.GaussianBlur(3)), dtype=np.float32)
-    return b - b.mean()
-
-
-def _coil_template():
-    global _TEMPLATE
-    if _TEMPLATE is None:
-        p = Path(__file__).resolve().parent / "assets" / "coil_template.npz"
-        if not p.exists():
-            _TEMPLATE = False
-        else:
-            d = np.load(p)
-            mask = d["mask"].astype(bool)
-            _TEMPLATE = {"mask": mask, "hw": mask.shape,
-                         "fft": np.fft.fft2(_coilness(d["ref_gray"].astype(np.float32)))}
-    return _TEMPLATE
-
-
-def _align_shift(g: np.ndarray, fft_ref: np.ndarray, hw, frac: float = 0.12):
-    """Bounded phase-correlation translation to register the coil to the template
-    (search limited to +/-frac of each axis, so spurious far peaks are rejected)."""
-    H, W = hw
-    R = fft_ref * np.conj(np.fft.fft2(_coilness(g)))
-    R /= (np.abs(R) + 1e-6)
-    r = np.fft.ifft2(R).real
-    msy, msx = int(H * frac), int(W * frac)
-    win = np.full_like(r, -1e18)
-    win[:msy, :msx] = r[:msy, :msx];  win[:msy, -msx:] = r[:msy, -msx:]
-    win[-msy:, :msx] = r[-msy:, :msx]; win[-msy:, -msx:] = r[-msy:, -msx:]
-    py, px = np.unravel_index(np.argmax(win), win.shape)
-    return (py if py < H // 2 else py - H), (px if px < W // 2 else px - W)
+def _segment_coil(rgb: np.ndarray):
+    """Per-image coil mask from the winding texture. The winding is a region of
+    DENSE parallel lines, so a heavily-smoothed edge-energy field forms a clean
+    blob over the coil and drops on flat copper, solder and the rest of the PCB.
+    Returns a bool (H, W) mask, or None if scipy isn't available."""
+    try:
+        from scipy import ndimage
+    except Exception:
+        return None
+    H, W = rgb.shape[:2]
+    g = rgb.mean(axis=2)
+    grad = np.hypot(ndimage.sobel(g, axis=1), ndimage.sobel(g, axis=0))
+    energy = ndimage.gaussian_filter(grad, max(8, W // 60))
+    m = (energy / (energy.max() + 1e-6)) > 0.32
+    roi = np.zeros((H, W), bool)
+    my, mx = int(H * 0.05), int(W * 0.04)
+    roi[my:H - my, mx:W - mx] = True                 # drop the outer margin (pads/traces)
+    m &= roi
+    lbl, n = ndimage.label(m)
+    if n == 0:
+        return m
+    band = (slice(H // 3, 2 * H // 3), slice(W // 4, 3 * W // 4))
+    best = max(range(1, n + 1), key=lambda k: int((lbl[band] == k).sum()))
+    coil = ndimage.binary_closing(lbl == best, np.ones((11, 11)))
+    return ndimage.binary_opening(coil, np.ones((5, 5)))
 
 
 def load_clean_coil(path, crop_box, max_side=900, dim=0.30) -> QPixmap:
-    """The coil isolated: crop to the ROI, register the coil to the template,
-    and dim everything outside the coil annulus so the winding stands out.
-    Falls back to the plain crop if the coil-template asset isn't present."""
+    """The coil isolated: crop to the ROI, segment the coil from its winding
+    texture (per image, so the mask conforms to the coil's actual position and
+    shape), and dim everything outside it with a subtle outline. Falls back to
+    the plain crop if segmentation is unavailable."""
     crop = Image.open(path).convert("RGB").crop(crop_box)
-    t = _coil_template()
-    if not t:
+    w0, h0 = crop.size
+    W = _SEG_W
+    H = max(1, round(W * h0 / w0))
+    arr = np.asarray(crop.resize((W, H), Image.BILINEAR), dtype=np.float32)
+
+    mask = _segment_coil(arr)
+    if mask is None or not mask.any():
         crop.thumbnail((max_side, max_side), Image.BILINEAR)
         return np_to_pixmap(np.asarray(crop, dtype=np.uint8))
 
-    H, W = t["hw"]
-    crop = crop.resize((W, H), Image.BILINEAR)
-    arr = np.asarray(crop, dtype=np.float32)
-    sy, sx = _align_shift(np.asarray(crop.convert("L"), dtype=np.float32),
-                          t["fft"], t["hw"])
-    arr = np.roll(arr, shift=(sy, sx), axis=(0, 1))
-
-    mask = t["mask"]
     out = arr.copy()
     out[~mask] *= dim                                   # dim the PCB background
     edge = np.asarray(Image.fromarray((mask * 255).astype(np.uint8))
