@@ -130,11 +130,15 @@ def _segment_coil(rgb: np.ndarray):
     return ndimage.binary_opening(coil, np.ones((5, 5)))
 
 
-def load_clean_coil(path, crop_box, max_side=900, dim=0.30) -> QPixmap:
+def load_clean_coil(path, crop_box, max_side=900, dim=0.30,
+                    amap=None, peak=None, t_flag=None) -> QPixmap:
     """The coil isolated: crop to the ROI, segment the coil from its winding
     texture (per image, so the mask conforms to the coil's actual position and
     shape), and dim everything outside it with a subtle outline. Falls back to
-    the plain crop if segmentation is unavailable."""
+    the plain crop if segmentation is unavailable.
+
+    If `amap` (the PaDiM per-patch map from localize()) is given, the anomaly
+    heatmap is also overlaid -- so the clean-coil and heatmap views compose."""
     crop = Image.open(path).convert("RGB").crop(crop_box)
     w0, h0 = crop.size
     W = _SEG_W
@@ -148,9 +152,28 @@ def load_clean_coil(path, crop_box, max_side=900, dim=0.30) -> QPixmap:
 
     out = arr.copy()
     out[~mask] *= dim                                   # dim the PCB background
+
+    if amap is not None and t_flag:                     # overlay the anomaly heatmap
+        denom = float(t_flag) if float(t_flag) > 0 else float(amap.max() or 1.0)
+        norm = np.clip(amap.astype(np.float32) / denom, 0.0, 1.0)
+        up = np.asarray(Image.fromarray((norm * 255).astype(np.uint8))
+                        .resize((W, H), Image.BILINEAR), dtype=np.float32) / 255.0
+        heat = _anomaly_colormap(up).astype(np.float32)
+        a = (0.6 * up)[..., None]
+        out = out * (1.0 - a) + heat * a
+
     edge = np.asarray(Image.fromarray((mask * 255).astype(np.uint8))
                       .filter(ImageFilter.FIND_EDGES)) > 40
     out[edge] = [0, 200, 255]                           # subtle coil outline
     img = Image.fromarray(out.astype(np.uint8))
+
+    if amap is not None and peak is not None:           # mark the hottest patch
+        h, w = amap.shape
+        prow, pcol = peak
+        px = (pcol + 0.5) / w * W
+        py = (prow + 0.5) / h * H
+        bw, bh = W / w, H / h
+        ImageDraw.Draw(img).rectangle([px - bw, py - bh, px + bw, py + bh],
+                                      outline=(255, 255, 255), width=max(2, W // 400))
     img.thumbnail((max_side, max_side), Image.BILINEAR)
     return np_to_pixmap(np.asarray(img, dtype=np.uint8))

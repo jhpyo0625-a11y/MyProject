@@ -178,26 +178,25 @@ class InspectTab(QWidget):
         self.status_cb(f"Inspected {Path(path).name}  ->  {r.get('band', '--')}")
 
     def _render_image(self, path, r=None):
-        if self.btn_clean.isChecked():
+        clean = self.btn_clean.isChecked()
+        heat = (self.btn_heatmap.isChecked() and r is not None
+                and r.get("amap") is not None)
+        t_flag = r.get("thresholds", {}).get("t_flag") if r else None
+        if clean and heat:                  # combined: heatmap overlaid on the clean coil
+            pix = load_clean_coil(path, self.predictor.crop, amap=r["amap"],
+                                  peak=r.get("peak"), t_flag=t_flag)
+        elif clean:
             pix = load_clean_coil(path, self.predictor.crop)
-        elif (self.btn_heatmap.isChecked() and r is not None
-              and r.get("amap") is not None):
-            pix = load_full_with_heatmap(
-                path, self.predictor.crop, r["amap"], r.get("peak"),
-                t_flag=r.get("thresholds", {}).get("t_flag"))
+        elif heat:
+            pix = load_full_with_heatmap(path, self.predictor.crop, r["amap"],
+                                         r.get("peak"), t_flag=t_flag)
         else:
             pix = load_full_with_box(path, self.predictor.crop)
         self.image_label.setPixmap(pix.scaled(
             self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def _on_toggle_view(self, checked):
-        # the two views are mutually exclusive
-        if checked:
-            other = self.btn_heatmap if self.sender() is self.btn_clean else self.btn_clean
-            if other.isChecked():
-                other.blockSignals(True)
-                other.setChecked(False)
-                other.blockSignals(False)
+        # the two views compose -- either or both can be on
         if self._current:
             self._render_image(*self._current)
         elif checked:
